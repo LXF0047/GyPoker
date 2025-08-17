@@ -5,13 +5,12 @@ import uuid
 import gevent
 import redis
 from flask import Flask, render_template, redirect, session, url_for, request, flash, jsonify
+from markupsafe import escape
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_sockets import Sockets
-from geventwebsocket.websocket import WebSocket
+from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from poker.channel import ChannelError, MessageFormatError, MessageTimeout
-from poker.channel_websocket import ChannelWebSocket
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
 from poker.database import get_db_connection, get_ranking_list
@@ -25,7 +24,7 @@ login_manager.login_view = "login"
 
 os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
 
-sockets = Sockets(app)
+socketio = SocketIO(app)
 
 redis_url = os.environ["REDIS_URL"]
 redis = redis.from_url(redis_url)
@@ -178,36 +177,51 @@ def join():
     return render_template("join.html")
 
 
-@sockets.route("/poker/texas-holdem")
-def texasholdem_poker_game(ws: WebSocket):
-    return poker_game(ws, "texas-holdem-poker:lobby")
+@socketio.on('connect')
+def on_connect():
+    app.logger.info(f"Client connected: {request.sid}")
 
 
-def poker_game(ws: WebSocket, connection_channel: str):
-    """
+player_channels = {}
 
-    :param ws:
-    :param connection_channel: texas-holdem-poker:lobby
-    :return:
-    """
-    client_channel = ChannelWebSocket(ws)  # 与websocket通信
 
+@socketio.on('disconnect')
+def on_disconnect():
+    app.logger.info(f"Client disconnected: {request.sid}")
+    sid = request.sid
+    if sid in player_channels:
+        del player_channels[sid]
+
+
+@socketio.on('game_message')
+def on_game_message(message):
+    sid = request.sid
+    if sid in player_channels:
+        try:
+            player_channels[sid].send_message(message)
+        except (ChannelError, MessageFormatError):
+            pass
+
+
+@socketio.on('join_game')
+def on_join_game(data):
+    poker_game(data, "texas-holdem-poker:lobby")
+
+
+def poker_game(data, connection_channel: str):
     if "player-id" not in session:
-        client_channel.send_message({"message_type": "error", "error": "Unrecognized user"})
-        client_channel.close()
+        emit("error", {"error": "Unrecognized user"})
         return
 
     session_id = str(uuid.uuid4())
 
-    # 登录时数据库读取后存入session中
     player_id = session["player-id"]
     player_name = session["player-name"]
     player_money = session["player-money"]
     player_loan = session["player-loan"]
     room_id = session["room-id"]
 
-    # 使用PlayerClientConnector类向大厅发送连接消息并返回玩家客户端
-    player_connector = PlayerClientConnector(redis, connection_channel, app.logger)  #
+    player_connector = PlayerClientConnector(redis, connection_channel, app.logger)
 
     try:
         server_channel = player_connector.connect(
@@ -221,60 +235,24 @@ def poker_game(ws: WebSocket, connection_channel: str):
             session_id=session_id,
             room_id=room_id
         )
-
     except (ChannelError, MessageFormatError, MessageTimeout) as e:
-        app.logger.error("Unable to connect player {} to a poker5 server: {}".format(player_id, e.args[0]))
+        app.logger.error(f"Unable to connect player {player_id} to a poker server: {e}")
+        emit("error", {"error": "Unable to connect to the game server"})
+        return
 
-    else:
-        # 如果try中的程序执行过程中没有发生错误，则会继续执行else中的程序；
-        # Forwarding connection to the client
-        client_channel.send_message(server_channel.connection_message)
+    emit('game_connected', server_channel.connection_message)
 
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        #  Game service communication
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    player_channels[request.sid] = server_channel
 
-        def message_handler(channel1, channel2):
-            # 将从channel1接受到的消息转发到channel2
-            try:
-                while True:
-                    message = channel1.recv_message()
-                    if "message_type" in message and message["message_type"] == "disconnect":
-                        raise ChannelError
-                    channel2.send_message(message)
-            except (ChannelError, MessageFormatError):
-                pass
-
-        greenlets = [
-            # 转发websocket消息给redis
-            gevent.spawn(message_handler, client_channel, server_channel),
-            # 转发redis消息给websocket
-            gevent.spawn(message_handler, server_channel, client_channel)
-        ]
-
-        # ----- 如果任一绿色线程结束，关闭所有线程以确保资源释放 ------
-        def closing_handler(*args, **kwargs):
-            # Kill other active greenlets
-            gevent.killall(greenlets, ChannelError)
-
-        greenlets[0].link(closing_handler)
-        greenlets[1].link(closing_handler)
-
-        gevent.joinall(greenlets)
-
-        # 客户端和服务端尝试发送断开消息，最终关闭通道
+    def message_handler(channel_from, channel_to_ws):
         try:
-            client_channel.send_message({"message_type": "disconnect"})
-        except:
+            while True:
+                message = channel_from.recv_message()
+                if "message_type" in message and message["message_type"] == "disconnect":
+                    raise ChannelError
+                socketio.emit('game_message', message, room=channel_to_ws)
+        except (ChannelError, MessageFormatError):
             pass
-        finally:
-            client_channel.close()
 
-        try:
-            server_channel.send_message({"message_type": "disconnect"})
-        except:
-            pass
-        finally:
-            server_channel.close()
+    gevent.spawn(message_handler, server_channel, request.sid)
 
-        app.logger.info("player {} connection closed".format(player_id))

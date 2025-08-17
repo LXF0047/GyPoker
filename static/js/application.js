@@ -191,11 +191,7 @@ PyPoker = {
         updatePots: function (pots) {
             $('#pots').empty();
             for (potIndex in pots) {
-                $('#pots').append($(
-                    '<div class="pot">' +
-                    '$' + parseInt(pots[potIndex].money) +
-                    '</div>'
-                ));
+                $('#pots').append($('<div class="pot">' + '$' + parseInt(pots[potIndex].money) + '</div>'));
             }
         },
 
@@ -258,7 +254,7 @@ PyPoker = {
                 case 'pots-update':
                     PyPoker.Game.updatePlayers(message.players);
                     PyPoker.Game.updatePots(message.pots);
-                    PyPoker.Game.updatePlayersBet();  // Reset the bets
+                    PyPoker.Game.updatePlayersBet(); // Reset the bets
                     break;
                 case 'player-action':
                     PyPoker.Player.onPlayerAction(message);
@@ -552,10 +548,18 @@ PyPoker = {
                 "fg_width": 0.05,
                 "count_past_zero": false,
                 "time": {
-                    "Days": {show: false},
-                    "Hours": {show: false},
-                    "Minutes": {show: false},
-                    "Seconds": {show: true}
+                    "Days": {
+                        show: false
+                    },
+                    "Hours": {
+                        show: false
+                    },
+                    "Minutes": {
+                        show: false
+                    },
+                    "Seconds": {
+                        show: true
+                    }
                 }
             });
             $timers.addClass('active');
@@ -564,12 +568,16 @@ PyPoker = {
         onBet: function (message) {
             // PyPoker.Player.enableBetMode(message);
             PyPoker.Player.enableBetModeNew(message)
-            $("html, body").animate({scrollTop: $(document).height()}, "slow");
+            $("html, body").animate({
+                scrollTop: $(document).height()
+            }, "slow");
         },
 
         onChangeCards: function (message) {
             PyPoker.Player.setCardsChangeMode(true);
-            $("html, body").animate({scrollTop: $(document).height()}, "slow");
+            $("html, body").animate({
+                scrollTop: $(document).height()
+            }, "slow");
         },
 
         toggleReadyStatus: function () {
@@ -600,7 +608,7 @@ PyPoker = {
             };
 
             // 将消息发送到后台
-            PyPoker.socket.send(JSON.stringify(readyStateMessage));
+            PyPoker.socket.emit('game_message', readyStateMessage);
         },
     },
 
@@ -703,34 +711,33 @@ PyPoker = {
     },
 
     init: function () {
-        wsScheme = window.location.protocol == "https:" ? "wss://" : "ws://";
+        PyPoker.socket = io();
 
-        PyPoker.socket = new WebSocket(wsScheme + location.host + "/poker/texas-holdem");
-
-        PyPoker.socket.onopen = function () {
+        PyPoker.socket.on('connect', function () {
             PyPoker.Logger.log('Connected :)');
-        };
+            PyPoker.socket.emit('join_game', {});
+        });
 
-        PyPoker.socket.onclose = function () {
+        PyPoker.socket.on('disconnect', function () {
             PyPoker.Logger.log('Disconnected :(');
             PyPoker.Room.destroyRoom();
-        };
+        });
 
-        PyPoker.socket.onmessage = function (message) {
-            //onmessage用于接收服务端消息
-            var data = JSON.parse(message.data);
+        PyPoker.socket.on('game_connected', function (data) {
+            PyPoker.onConnect(data);
+        });
 
+        PyPoker.socket.on('game_message', function (data) {
             console.log(data);
 
             switch (data.message_type) {
                 case 'ping':
-                    PyPoker.socket.send(JSON.stringify({'message_type': 'pong'}));
-                    break;
-                case 'connect':
-                    PyPoker.onConnect(data);
-                    break;
-                case 'disconnect':
-                    PyPoker.onDisconnect(data);
+                    const readyBtn = $('#ready-btn');
+                    const isReady = readyBtn.val() === 'Cancel';
+                    PyPoker.socket.emit('game_message', {
+                        'message_type': 'pong',
+                        'ready': isReady
+                    });
                     break;
                 case 'room-update':
                     PyPoker.Room.onRoomUpdate(data);
@@ -738,15 +745,13 @@ PyPoker = {
                 case 'game-update':
                     PyPoker.Game.onGameUpdate(data);
                     break;
-                case 'error':
-                    PyPoker.Logger.log(data.error);
-                    break;
-                case 'ping-state':
-                    // 后台发送请求查看前端准备按钮状态
-                    PyPoker.Player.checkReadyStateAndSend();
-                    break;
             }
-        };
+        });
+
+        PyPoker.socket.on('error', function (data) {
+            PyPoker.Logger.log(data.error);
+        });
+
 
         PyPoker.Game.fetchRankingData();
 
@@ -760,42 +765,42 @@ PyPoker = {
             $('#current-player .card.selected').each(function () {
                 discards.push($(this).data('key'))
             });
-            PyPoker.socket.send(JSON.stringify({
+            PyPoker.socket.emit('game_message', {
                 'message_type': 'cards-change',
                 'cards': discards
-            }));
+            });
             PyPoker.Player.setCardsChangeMode(false);
         });
 
         $('#fold-cmd').click(function () {
-            PyPoker.socket.send(JSON.stringify({
+            PyPoker.socket.emit('game_message', {
                 'message_type': 'bet',
                 'bet': -1
-            }));
+            });
             PyPoker.Player.disableBetMode();
         });
 
         $('#no-bet-cmd').click(function () {
-            PyPoker.socket.send(JSON.stringify({
+            PyPoker.socket.emit('game_message', {
                 'message_type': 'bet',
                 'bet': 0
-            }));
+            });
             PyPoker.Player.disableBetMode();
         });
 
         $('#bet-cmd').click(function () {
-            PyPoker.socket.send(JSON.stringify({
+            PyPoker.socket.emit('game_message', {
                 'message_type': 'bet',
                 'bet': $('#bet-input').val()
-            }));
+            });
             PyPoker.Player.disableBetMode();
         });
 
         $('#allin-bet').click(function () {
-            PyPoker.socket.send(JSON.stringify({
+            PyPoker.socket.emit('game_message', {
                 'message_type': 'bet',
                 'bet': $('#allin-bet').val()
-            }));
+            });
             PyPoker.Player.disableBetMode();
         });
 
@@ -820,4 +825,3 @@ PyPoker = {
 $(document).ready(function () {
     PyPoker.init();
 })
-

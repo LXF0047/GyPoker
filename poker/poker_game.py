@@ -573,9 +573,7 @@ class GameBetRounder:
                 # 接收下注数据
                 bet = get_bet_function(player=starting_player, min_bet=min_bet, max_bet=max_bet, bets=bets)
 
-            if bet is None:
-                self._game_players.remove(starting_player.id)
-            elif bet == -1:
+            if bet == -1:
                 self._game_players.fold(starting_player.id)
             else:
                 if bet < min_bet or bet > max_bet:
@@ -716,7 +714,7 @@ class GameBetHandler:
 
         except (ChannelError, MessageFormatError, MessageTimeout) as e:
             player.send_message({"message_type": "error", "error": e.args[0]})
-            return None
+            return -1
 
     def on_bet(self, player: Player, bet: float, min_bet: float, max_bet: float, bets: Dict[str, float]):
         """
@@ -739,9 +737,7 @@ class GameBetHandler:
             else:
                 return "raise"
 
-        if bet is None:
-            self._event_dispatcher.dead_player_event(player)
-        elif bet == -1:
+        if bet == -1:
             self._event_dispatcher.fold_event(player)
         else:
             self._event_dispatcher.bet_event(player, bet, get_bet_type(bet), bets)

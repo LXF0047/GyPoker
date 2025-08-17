@@ -6,7 +6,8 @@
 # @desc :
 import sqlite3
 
-DATABASE_PATH = "/home/pypoker/user.db"
+# DATABASE_PATH = "/home/pypoker/user.db"
+DATABASE_PATH = "/Users/f/Downloads/user.db"
 INIT_MONEY = 3000
 
 

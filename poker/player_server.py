@@ -35,10 +35,11 @@ class PlayerServer(Player):
 
     def ping(self) -> bool:
         try:
-            # O队列推入
             self.send_message({"message_type": "ping"})
             message = self.recv_message(timeout_epoch=time.time() + 2)
             MessageFormatError.validate_message_type(message, expected="pong")
+            if "ready" in message:
+                self._ready = bool(message["ready"])
             return True
         except (ChannelError, MessageTimeout, MessageFormatError) as e:
             self._logger.error("Unable to ping {}: {}".format(self, e))
@@ -46,14 +47,7 @@ class PlayerServer(Player):
             return False
 
     def update_ready_state(self):
-        try:
-            self.send_message({"message_type": "ping-state"})
-            message = self.recv_message(timeout_epoch=time.time() + 2)
-            MessageFormatError.validate_message_type(message, expected="ready-state-change")
-            if message["ready"]:
-                self._ready = True
-        except (ChannelError, MessageTimeout, MessageFormatError) as e:
-            self._logger.error("Unable to update ready state for {}: {}".format(self, e))
+        pass
 
     def try_send_message(self, message: Any) -> bool:
         try:

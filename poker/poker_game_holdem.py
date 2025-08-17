@@ -91,7 +91,7 @@ class HoldemPokerGameEventDispatcher(GameEventDispatcher):
 
 class HoldemPokerGame(PokerGame):
     TIMEOUT_TOLERANCE = 2
-    BET_TIMEOUT = 300
+    BET_TIMEOUT = 180
 
     # WAIT_AFTER_CARDS_ASSIGNMENT = 1
     # WAIT_AFTER_BET_ROUND = 1

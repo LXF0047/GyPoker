@@ -262,15 +262,6 @@ class GameRoom(GameSubscriber):
             for player in self._room_players.players
         ])
 
-    def update_ready_states(self):
-        """
-        更新所有玩家的准备状态。
-        """
-        gevent.joinall([
-            gevent.spawn(player.update_ready_state)
-            for player in self._room_players.players
-        ])
-
     def all_players_ready(self):
         """
         检查所有玩家是否都准备就绪。
@@ -287,10 +278,7 @@ class GameRoom(GameSubscriber):
             dealer_key = -1
             while True:
                 try:
-                    # 踢出掉线玩家
                     self.remove_inactive_players()
-                    # 更新准备状态
-                    self.update_ready_states()
                     # 检查准备状态
                     if not self.all_players_ready():
                         continue
