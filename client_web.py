@@ -182,6 +182,8 @@ def on_connect():
     app.logger.info(f"Client connected: {request.sid}")
 
 
+import json
+
 player_channels = {}
 
 
@@ -190,6 +192,11 @@ def on_disconnect():
     app.logger.info(f"Client disconnected: {request.sid}")
     sid = request.sid
     if sid in player_channels:
+        player_info = player_channels[sid]
+        if 'game_loop' in player_info:
+            player_info['game_loop'].kill()
+        if 'chat_loop' in player_info:
+            player_info['chat_loop'].kill()
         del player_channels[sid]
 
 
@@ -197,10 +204,21 @@ def on_disconnect():
 def on_game_message(message):
     sid = request.sid
     if sid in player_channels:
-        try:
-            player_channels[sid].send_message(message)
-        except (ChannelError, MessageFormatError):
-            pass
+        player_info = player_channels[sid]
+        if message.get('message_type') == 'chat_message':
+            room_id = player_info['room_id']
+            chat_channel = f"room:{room_id}:chat"
+            chat_message = {
+                'sender_id': player_info['player_id'],
+                'sender_name': player_info['player_name'],
+                'message': message.get('message', '')
+            }
+            redis.publish(chat_channel, json.dumps(chat_message))
+        else:
+            try:
+                player_info['channel'].send_message(message)
+            except (ChannelError, MessageFormatError):
+                pass
 
 
 @socketio.on('join_game')
@@ -242,9 +260,7 @@ def poker_game(data, connection_channel: str):
 
     emit('game_connected', server_channel.connection_message)
 
-    player_channels[request.sid] = server_channel
-
-    def message_handler(channel_from, channel_to_ws):
+    def game_message_handler(channel_from, channel_to_ws):
         try:
             while True:
                 message = channel_from.recv_message()
@@ -252,7 +268,32 @@ def poker_game(data, connection_channel: str):
                     raise ChannelError
                 socketio.emit('game_message', message, room=channel_to_ws)
         except (ChannelError, MessageFormatError):
-            pass
+            app.logger.info(f"Player {player_id} game channel closed.")
 
-    gevent.spawn(message_handler, server_channel, request.sid)
+    def chat_message_handler(room_id, channel_to_ws):
+        chat_channel = f"room:{room_id}:chat"
+        pubsub = redis.pubsub()
+        pubsub.subscribe(chat_channel)
+        app.logger.info(f"Player {player_id} subscribed to chat channel: {chat_channel}")
+        for message in pubsub.listen():
+            if message['type'] == 'message':
+                chat_data = json.loads(message['data'])
+                socketio.emit('game_message', {
+                    'message_type': 'chat_message',
+                    'sender_id': chat_data['sender_id'],
+                    'sender_name': chat_data['sender_name'],
+                    'message': chat_data['message']
+                }, room=channel_to_ws)
+
+    game_loop = gevent.spawn(game_message_handler, server_channel, request.sid)
+    chat_loop = gevent.spawn(chat_message_handler, room_id, request.sid)
+
+    player_channels[request.sid] = {
+        'channel': server_channel,
+        'player_id': player_id,
+        'player_name': player_name,
+        'room_id': room_id,
+        'game_loop': game_loop,
+        'chat_loop': chat_loop
+    }
 

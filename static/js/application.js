@@ -2,6 +2,35 @@ PyPoker = {
 
     socket: null,
 
+    Chat: {
+        sendMessage: function(message) {
+            if (message.trim() !== '') {
+                PyPoker.socket.emit('game_message', {
+                    'message_type': 'chat_message',
+                    'message': message
+                });
+            }
+        },
+
+        addMessage: function(senderId, senderName, message) {
+            const chatLog = $('#chat-log');
+            const messageDiv = $('<div class="chat-message"></div>');
+            const senderDiv = $('<div class="sender"></div>').text(senderName);
+            const messageContentDiv = $('<div class="message-content"></div>').text(message);
+
+            messageDiv.append(senderDiv).append(messageContentDiv);
+
+            if (senderId == PyPoker.Game.getCurrentPlayerId()) {
+                messageDiv.addClass('my-message');
+            } else {
+                messageDiv.addClass('other-message');
+            }
+
+            chatLog.append(messageDiv);
+            chatLog.scrollTop(chatLog[0].scrollHeight);
+        }
+    },
+
     Game: {
         gameId: null,
 
@@ -728,8 +757,6 @@ PyPoker = {
         });
 
         PyPoker.socket.on('game_message', function (data) {
-            console.log(data);
-
             switch (data.message_type) {
                 case 'ping':
                     const readyBtn = $('#ready-btn');
@@ -744,6 +771,9 @@ PyPoker = {
                     break;
                 case 'game-update':
                     PyPoker.Game.onGameUpdate(data);
+                    break;
+                case 'chat_message':
+                    PyPoker.Chat.addMessage(data.sender_id, data.sender_name, data.message);
                     break;
             }
         });
@@ -802,6 +832,23 @@ PyPoker = {
                 'bet': $('#allin-bet').val()
             });
             PyPoker.Player.disableBetMode();
+        });
+
+        // Chat listeners
+        $('#chat-send-btn').click(function() {
+            const chatInput = $('#chat-input');
+            PyPoker.Chat.sendMessage(chatInput.val());
+            chatInput.val('');
+        });
+
+        $('#chat-input').keypress(function(e) {
+            if (e.which == 13) { // Enter key
+                $('#chat-send-btn').click();
+            }
+        });
+
+        $('.quick-chat-btn').click(function() {
+            PyPoker.Chat.sendMessage($(this).text());
         });
 
         PyPoker.Player.setCardsChangeMode(false);

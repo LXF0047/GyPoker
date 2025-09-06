@@ -12,71 +12,85 @@
             </div>
         </div>
 
-        <div id="current-player-wrapper" class="col-sm-4">
-            <h4>Room id {{ room }}</h4>
-            <h4>Hi {{ username }}!</h4>
-            <div id="ready-status">
-                <input type="button" id="ready-btn" class="btn btn-info" value="Ready"/>
-                <span id="status-indicator"
-                      style="display:inline-block; width: 10px; height: 10px; background-color: red; border-radius: 50%;"></span>
-            </div>
-            <div id="game-status" class="hidden">
-                <p data-key="4"></p>
-                <p data-key="3"></p>
-                <p data-key="2"></p>
-                <p data-key="1"></p>
-                <p data-key="0"></p>
-            </div>
+        <div id="right-panel" class="col-sm-4">
+            <div id="current-player-wrapper">
+                <h4>Room id {{ room }}</h4>
+                <h4>Hi {{ username }}!</h4>
+                <div id="ready-status">
+                    <input type="button" id="ready-btn" class="btn btn-info" value="Ready"/>
+                    <span id="status-indicator"
+                          style="display:inline-block; width: 10px; height: 10px; background-color: red; border-radius: 50%;"></span>
+                </div>
+                <div id="game-status" class="hidden">
+                    <p data-key="4"></p>
+                    <p data-key="3"></p>
+                    <p data-key="2"></p>
+                    <p data-key="1"></p>
+                    <p data-key="0"></p>
+                </div>
+                <div id="current-player" class="player">
+                    <div class="cards"></div>
 
-            <div id="current-player" class="player">
-                <div class="cards"></div>
+                    <div id="player-controls">
+                        <div id="bet-controls" class="controls">
+                            <div id="fold-cmd-wrapper">
+                                <input type="button" id="fold-cmd" class="btn btn-danger" value="Fold"/>
+                            </div>
+                            <div id="bet-input-wrapper">
+                                <button id="decrease-bet-quick" class="btn btn-secondary">--</button>
+                                <button id="decrease-bet" class="btn btn-secondary">-</button>
+                                <input id="bet-input" type="text" readonly value="0"
+                                       style="width: 60px; text-align: center;"/>
+                                <button id="increase-bet" class="btn btn-secondary">+</button>
+                                <button id="increase-bet-quick" class="btn btn-secondary">++</button>
+                            </div>
+                            <div id="bet-cmd-wrapper">
+                                <input type="button" id="bet-cmd" class="btn btn-primary" value="Check"/>
+                                <br>
+                                <span id="bet-cmd-text" style="font-size: 20px; color: red;">看清楚了，这下面是ALL IN</span>
+                                <button id="allin-bet" class="btn btn-secondary">All in</button>
+                            </div>
+                            <div id="no-bet-cmd-wrapper">
+                                <input type="button" id="no-bet-cmd" class="btn btn-warning" value="Unable to open"/>
+                            </div>
+                        </div>
 
-                <div id="player-controls">
-                    <div id="bet-controls" class="controls">
-                        <div id="fold-cmd-wrapper">
-                            <input type="button" id="fold-cmd" class="btn btn-danger" value="Fold"/>
+                        <div id="cards-change-controls" class="controls">
+                            <span id="cards-change-cmd" class="btn btn-primary">Change cards</span>
                         </div>
-                        <div id="bet-input-wrapper">
-                            <button id="decrease-bet-quick" class="btn btn-secondary">--</button>
-                            <button id="decrease-bet" class="btn btn-secondary">-</button>
-                            <input id="bet-input" type="text" readonly value="0"
-                                   style="width: 60px; text-align: center;"/>
-                            <button id="increase-bet" class="btn btn-secondary">+</button>
-                            <button id="increase-bet-quick" class="btn btn-secondary">++</button>
-                        </div>
-                        <div id="bet-cmd-wrapper">
-                            <input type="button" id="bet-cmd" class="btn btn-primary" value="Check"/>
-                            <br>
-                            <span id="bet-cmd-text" style="font-size: 20px; color: red;">看清楚了，这下面是ALL IN</span>
-                            <button id="allin-bet" class="btn btn-secondary">All in</button>
-                        </div>
-                        <div id="no-bet-cmd-wrapper">
-                            <input type="button" id="no-bet-cmd" class="btn btn-warning" value="Unable to open"/>
-                        </div>
-                    </div>
-
-                    <div id="cards-change-controls" class="controls">
-                        <span id="cards-change-cmd" class="btn btn-primary">Change cards</span>
                     </div>
                 </div>
             </div>
-        </div>
-        <div id="ranking-list" class="col-sm-4">
-            <h4>排行榜</h4>
-            <table id="ranking-table" class="table">
-                <thead>
-                <tr>
-                    <th>排名</th>
-                    <th>玩家</th>
-                    <th>总积分</th>
-                    <th>bb/100 hands</th>
-                    <th>今日净胜分</th>
-                </tr>
-                </thead>
-                <tbody>
-                <!-- 排行榜数据将动态填充到这里 -->
-                </tbody>
-            </table>
+            <div id="chat-wrapper">
+                <h4>友好沟通平台</h4>
+                <div id="chat-log"></div>
+                <div id="chat-input-wrapper">
+                    <input type="text" id="chat-input" class="form-control" placeholder="输入消息..."/>
+                    <button id="chat-send-btn" class="btn btn-primary">发送</button>
+                </div>
+                <div id="quick-chat-wrapper">
+                    <button class="quick-chat-btn btn btn-sm btn-info">来，推我！</button>
+                    <button class="quick-chat-btn btn btn-sm btn-info">菜狗子，赶紧的！</button>
+                    <button class="quick-chat-btn btn btn-sm btn-info">我要验牌！</button>
+                </div>
+            </div>
+            <div id="ranking-list">
+                <h4>排行榜</h4>
+                <table id="ranking-table" class="table">
+                    <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>玩家</th>
+                        <th>总积分</th>
+                        <th>bb/100 hands</th>
+                        <th>今日净胜分</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <!-- 排行榜数据将动态填充到这里 -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

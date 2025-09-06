@@ -303,7 +303,8 @@ body {
     height: 300px;
     margin-top: 110px;
     margin-bottom: 80px;
-    width: 500px;
+    max-width: 500px;
+    width: 100%;
 }
 
 #table {
@@ -397,6 +398,7 @@ body {
 #current-player {
     display: none;
     margin-top: 15px;
+    min-height: 150px;
 }
 
 #current-player .cards {
@@ -447,4 +449,68 @@ body {
 #game-wrapper.texas-holdem #players .player .cards .card {
     margin-left: 0px;
 }
+/*****************************************************
+  Chat
+ *****************************************************/
 
+#chat-wrapper {
+    margin-top: 20px;
+    border: 1px solid #444;
+    border-radius: 5px;
+    padding: 10px;
+    position: relative;
+    z-index: 30;
+}
+
+#chat-log {
+    height: 200px;
+    overflow-y: scroll;
+    border: 1px solid #333;
+    padding: 5px;
+    margin-bottom: 10px;
+    background-color: #222;
+}
+
+.chat-message {
+    margin-bottom: 5px;
+    padding: 5px;
+    border-radius: 5px;
+    clear: both;
+    max-width: 80%;
+}
+
+.chat-message.my-message {
+    text-align: right;
+    background-color: #0d4b81;
+    float: right;
+}
+
+.chat-message.other-message {
+    text-align: left;
+    background-color: #444;
+    float: left;
+}
+
+.chat-message .sender {
+    font-weight: bold;
+    font-size: 8pt;
+    color: #AAA;
+    display: block;
+}
+
+#chat-input-wrapper {
+    display: flex;
+}
+
+#chat-input {
+    flex-grow: 1;
+    margin-right: 5px;
+}
+
+#quick-chat-wrapper {
+    margin-top: 5px;
+}
+
+#quick-chat-wrapper .quick-chat-btn {
+    margin-right: 5px;
+}
