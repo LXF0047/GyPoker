@@ -3,7 +3,7 @@ PyPoker = {
     socket: null,
 
     Chat: {
-        sendMessage: function(message) {
+        sendMessage: function (message) {
             if (message.trim() !== '') {
                 PyPoker.socket.emit('game_message', {
                     'message_type': 'chat_message',
@@ -12,7 +12,7 @@ PyPoker = {
             }
         },
 
-        addMessage: function(senderId, senderName, message) {
+        addMessage: function (senderId, senderName, message) {
             const chatLog = $('#chat-log');
             const messageDiv = $('<div class="chat-message"></div>');
             const senderDiv = $('<div class="sender"></div>').text(senderName);
@@ -835,19 +835,19 @@ PyPoker = {
         });
 
         // Chat listeners
-        $('#chat-send-btn').click(function() {
+        $('#chat-send-btn').click(function () {
             const chatInput = $('#chat-input');
             PyPoker.Chat.sendMessage(chatInput.val());
             chatInput.val('');
         });
 
-        $('#chat-input').keypress(function(e) {
+        $('#chat-input').keypress(function (e) {
             if (e.which == 13) { // Enter key
                 $('#chat-send-btn').click();
             }
         });
 
-        $('.quick-chat-btn').click(function() {
+        $('.quick-chat-btn').click(function () {
             PyPoker.Chat.sendMessage($(this).text());
         });
 
