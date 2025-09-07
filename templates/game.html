@@ -1,13 +1,44 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <div class="container" id="game-wrapper">
     <div class="row">
-        <div id="table-wrapper" class="col-sm-8">
-            <div id="players"></div>
+        <div class="col-sm-8">
+            <div id="table-wrapper">
+                <div id="players"></div>
 
-            <div id="table">
-                <div class="game-info">
-                    <div id="pots"></div>
-                    <div id="shared-cards"></div>
+                <div id="table">
+                    <div class="game-info">
+                        <div id="pots"></div>
+                        <div id="shared-cards"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="player-controls" class="player-controls-horizontal">
+                <div id="bet-controls" class="controls">
+                    <div id="fold-cmd-wrapper">
+                        <input type="button" id="fold-cmd" class="btn btn-danger" value="Fold"/>
+                    </div>
+                    <div id="bet-input-wrapper">
+                        <button id="decrease-bet-quick" class="btn btn-secondary">--</button>
+                        <button id="decrease-bet" class="btn btn-secondary">-</button>
+                        <input id="bet-input" type="text" readonly value="0"
+                               style="width: 60px; text-align: center; display: inline-block; vertical-align: middle;"/>
+                        <button id="increase-bet" class="btn btn-secondary">+</button>
+                        <button id="increase-bet-quick" class="btn btn-secondary">++</button>
+                        <button id="half-pot-bet" class="btn btn-info">1/2 Pot</button>
+                        <button id="full-pot-bet" class="btn btn-info">Full Pot</button>
+                    </div>
+                    <div id="bet-cmd-wrapper">
+                        <input type="button" id="bet-cmd" class="btn btn-primary" value="Check"/>
+                        <button id="allin-bet" class="btn btn-secondary">All in</button>
+                    </div>
+                    <div id="no-bet-cmd-wrapper">
+                        <input type="button" id="no-bet-cmd" class="btn btn-warning" value="Unable to open"/>
+                    </div>
+                </div>
+
+                <div id="cards-change-controls" class="controls">
+                    <span id="cards-change-cmd" class="btn btn-primary">Change cards</span>
                 </div>
             </div>
         </div>
@@ -30,38 +61,6 @@
                 </div>
                 <div id="current-player" class="player">
                     <div class="cards"></div>
-
-                    <div id="player-controls">
-                        <div id="bet-controls" class="controls">
-                            <div id="fold-cmd-wrapper">
-                                <input type="button" id="fold-cmd" class="btn btn-danger" value="Fold"/>
-                            </div>
-                            <div id="bet-input-wrapper">
-                                <button id="decrease-bet-quick" class="btn btn-secondary">--</button>
-                                <button id="decrease-bet" class="btn btn-secondary">-</button>
-                                <input id="bet-input" type="text" readonly value="0"
-                                       style="width: 60px; text-align: center;"/>
-                                <button id="increase-bet" class="btn btn-secondary">+</button>
-                                <button id="increase-bet-quick" class="btn btn-secondary">++</button>
-                                <br>
-                                <button id="half-pot-bet" class="btn btn-info">1/2 Pot</button>
-                                <button id="full-pot-bet" class="btn btn-info">Full Pot</button>
-                            </div>
-                            <div id="bet-cmd-wrapper">
-                                <input type="button" id="bet-cmd" class="btn btn-primary" value="Check"/>
-                                <br>
-                                <span id="bet-cmd-text" style="font-size: 20px; color: red;">看清楚了，这下面是ALL IN</span>
-                                <button id="allin-bet" class="btn btn-secondary">All in</button>
-                            </div>
-                            <div id="no-bet-cmd-wrapper">
-                                <input type="button" id="no-bet-cmd" class="btn btn-warning" value="Unable to open"/>
-                            </div>
-                        </div>
-
-                        <div id="cards-change-controls" class="controls">
-                            <span id="cards-change-cmd" class="btn btn-primary">Change cards</span>
-                        </div>
-                    </div>
                 </div>
             </div>
             <div id="chat-wrapper">
@@ -74,7 +73,7 @@
                 <div id="quick-chat-wrapper">
                     <button class="quick-chat-btn btn btn-sm btn-info">来，推我！</button>
                     <button class="quick-chat-btn btn btn-sm btn-info">菜狗子，赶紧的！</button>
-                    <button class="quick-chat-btn btn btn-sm btn-info">我要验牌！</button>
+                    <button class="quick-chat-btn btn-sm btn-info">我要验牌！</button>
                 </div>
             </div>
             <div id="ranking-list">

@@ -271,7 +271,7 @@ PyPoker = {
                     break;
                 case 'game-over':
                     PyPoker.Game.gameOver();
-                    PyPoker.Game.updateRankingList();
+                    PyPoker.Game.fetchRankingData();
                     break;
                 case 'fold':
                     PyPoker.Game.playerFold(message.player);
@@ -380,8 +380,10 @@ PyPoker = {
 
     Player: {
         betMode: false,
-
         cardsChangeMode: false,
+        currentBet: 0,
+        minBet: 0,
+        maxBet: 0,
 
         resetTimers: function () {
             // Reset timers
@@ -442,72 +444,99 @@ PyPoker = {
             $('#bet-controls').show();
         },
 
+        updateBetDisplay: function () {
+            const betAmountInput = $('#bet-input');
+            const decreaseBetButton = $('#decrease-bet');
+            const decreaseBetQuickButton = $('#decrease-bet-quick');
+            const increaseBetButton = $('#increase-bet');
+            const increaseBetQuickButton = $('#increase-bet-quick');
+            const betButton = $('#bet-cmd');
+
+            betAmountInput.val(PyPoker.Player.currentBet);
+            // 控制按钮状态
+            decreaseBetButton.prop('disabled', PyPoker.Player.currentBet <= PyPoker.Player.minBet);
+            decreaseBetQuickButton.prop('disabled', PyPoker.Player.currentBet <= PyPoker.Player.minBet);
+            increaseBetButton.prop('disabled', PyPoker.Player.currentBet >= PyPoker.Player.maxBet);
+            increaseBetQuickButton.prop('disabled', PyPoker.Player.currentBet >= PyPoker.Player.maxBet);
+            // 更新下注按钮显示
+            if (PyPoker.Player.currentBet === 0) {
+                betButton.val('Check');
+            } else if (PyPoker.Player.currentBet === PyPoker.Player.minBet) {
+                betButton.val('Call')
+            } else if (PyPoker.Player.currentBet === PyPoker.Player.maxBet) {
+                betButton.val('All In');
+            } else {
+                betButton.val('Bet ' + PyPoker.Player.currentBet);
+            }
+        },
+
         enableBetModeNew: function (message) {
             PyPoker.Player.betMode = true;
 
             // 判断玩家是否允许下注
             if (!message.min_score || $('#current-player').data('allowed-to-bet')) {
-                let minBet = parseInt(message.min_bet);
-                let maxBet = parseInt(message.max_bet);
-                let currentBet = minBet;
+                PyPoker.Player.minBet = parseInt(message.min_bet);
+                PyPoker.Player.maxBet = parseInt(message.max_bet);
+                PyPoker.Player.currentBet = PyPoker.Player.minBet;
 
-                const betAmountInput = $('#bet-input');
                 const decreaseBetButton = $('#decrease-bet');
                 const decreaseBetQuickButton = $('#decrease-bet-quick');
                 const increaseBetButton = $('#increase-bet');
                 const increaseBetQuickButton = $('#increase-bet-quick');
                 const allinBetButton = $('#allin-bet');
-                const betButton = $('#bet-cmd');
-                allinBetButton.val(maxBet)
+                const halfPotBetButton = $('#half-pot-bet');
+                const fullPotBetButton = $('#full-pot-bet');
 
-                // 更新下注显示
-                function updateBetDisplay() {
-                    betAmountInput.val(currentBet);
-                    // 控制按钮状态
-                    decreaseBetButton.prop('disabled', currentBet <= minBet);
-                    decreaseBetQuickButton.prop('disabled', currentBet <= minBet);
-                    increaseBetButton.prop('disabled', currentBet >= maxBet);
-                    increaseBetQuickButton.prop('disabled', currentBet >= maxBet);
-                    // 更新下注按钮显示
-                    if (currentBet === 0) {
-                        betButton.val('Check');
-                    } else if (currentBet === minBet) {
-                        betButton.val('Call')
-                    } else if (currentBet === maxBet) {
-                        betButton.val('All In');
-                    } else {
-                        betButton.val('Bet ' + currentBet);
-                    }
-                }
+                allinBetButton.val(PyPoker.Player.maxBet);
 
                 // 初始化显示
-                updateBetDisplay();
+                PyPoker.Player.updateBetDisplay();
 
                 // 增减下注金额
                 decreaseBetButton.off('click').on('click', function () {
-                    if (currentBet > minBet) {
-                        currentBet = Math.max(minBet, currentBet - 10);
-                        updateBetDisplay();
+                    if (PyPoker.Player.currentBet > PyPoker.Player.minBet) {
+                        PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, PyPoker.Player.currentBet - 10);
+                        PyPoker.Player.updateBetDisplay();
                     }
                 });
                 decreaseBetQuickButton.off('click').on('click', function () {
-                    if (currentBet > minBet) {
-                        currentBet = Math.max(minBet, currentBet - 50);
-                        updateBetDisplay();
+                    if (PyPoker.Player.currentBet > PyPoker.Player.minBet) {
+                        PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, PyPoker.Player.currentBet - 50);
+                        PyPoker.Player.updateBetDisplay();
                     }
                 });
                 increaseBetButton.off('click').on('click', function () {
-                    if (currentBet < maxBet) {
-                        currentBet = Math.min(maxBet, currentBet + 10);
-                        updateBetDisplay();
+                    if (PyPoker.Player.currentBet < PyPoker.Player.maxBet) {
+                        PyPoker.Player.currentBet = Math.min(PyPoker.Player.maxBet, PyPoker.Player.currentBet + 10);
+                        PyPoker.Player.updateBetDisplay();
                     }
                 });
                 increaseBetQuickButton.off('click').on('click', function () {
-                    if (currentBet < maxBet) {
-                        currentBet = Math.min(maxBet, currentBet + 50);
-                        updateBetDisplay();
+                    if (PyPoker.Player.currentBet < PyPoker.Player.maxBet) {
+                        PyPoker.Player.currentBet = Math.min(PyPoker.Player.maxBet, PyPoker.Player.currentBet + 50);
+                        PyPoker.Player.updateBetDisplay();
                     }
                 });
+
+                halfPotBetButton.off('click').on('click', function () {
+                    let totalPot = 0;
+                    $('#pots .pot').each(function () {
+                        totalPot += parseInt($(this).text().substring(1));
+                    });
+                    let halfPotBet = Math.round(totalPot / 2);
+                    PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, Math.min(PyPoker.Player.maxBet, halfPotBet));
+                    PyPoker.Player.updateBetDisplay();
+                });
+
+                fullPotBetButton.off('click').on('click', function () {
+                    let totalPot = 0;
+                    $('#pots .pot').each(function () {
+                        totalPot += parseInt($(this).text().substring(1));
+                    });
+                    PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, Math.min(PyPoker.Player.maxBet, totalPot));
+                    PyPoker.Player.updateBetDisplay();
+                });
+
                 // 弃牌控制
                 if (message.min_score) {
                     $('#fold-cmd').val('Pass')
@@ -827,11 +856,13 @@ PyPoker = {
         });
 
         $('#allin-bet').click(function () {
-            PyPoker.socket.emit('game_message', {
-                'message_type': 'bet',
-                'bet': $('#allin-bet').val()
-            });
-            PyPoker.Player.disableBetMode();
+            if (confirm("冷静！这是all-in！！")) {
+                PyPoker.socket.emit('game_message', {
+                    'message_type': 'bet',
+                    'bet': $('#allin-bet').val()
+                });
+                PyPoker.Player.disableBetMode();
+            }
         });
 
         // Chat listeners

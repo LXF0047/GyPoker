@@ -514,3 +514,36 @@ body {
 #quick-chat-wrapper .quick-chat-btn {
     margin-right: 5px;
 }
+
+/*****************************************************
+  Horizontal Player Controls
+ *****************************************************/
+
+#player-controls.player-controls-horizontal {
+    position: relative;
+    z-index: 100; /* High z-index to be on top of other elements */
+    text-align: center; /* Center the controls */
+    margin-top: -40px; /* Negative margin to pull it up */
+    margin-bottom: 20px;
+}
+
+#player-controls.player-controls-horizontal #bet-controls > div {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0 5px; /* Add some space between button groups */
+}
+
+#player-controls.player-controls-horizontal #bet-input-wrapper button,
+#player-controls.player-controls-horizontal #bet-input-wrapper input {
+    margin: 0 2px;
+}
+
+/* Override width and padding for buttons inside horizontal controls */
+#player-controls.player-controls-horizontal .btn {
+    width: auto !important;
+    padding: 5px 10px !important; /* This is for btn-sm */
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+    border-radius: 3px !important;
+    margin: 5px 2px !important; /* override margin */
+}
