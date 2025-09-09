@@ -43,6 +43,8 @@ class PlayerServer(Player):
                 self._ready = bool(message["ready"])
             if "start_final_10_hands" in message:
                 self.wants_to_start_final_10_hands = bool(message["start_final_10_hands"])
+            if "reset_scores" in message:
+                self.wants_to_reset_scores = bool(message["reset_scores"])
             return True
         except (ChannelError, MessageTimeout, MessageFormatError) as e:
             self._logger.error("Unable to ping {}: {}".format(self, e))

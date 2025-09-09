@@ -1,13 +1,13 @@
-# _*_ coding: utf-8 _*_
+# _*_ coding: utf-8 _*_ 
 # @Time : 2024/12/3 21:27 
 # @Author : lxf 
 # @Version：V 0.1
 # @File : database.py
-# @desc :
+# @desc : 
 import sqlite3
 
 # DATABASE_PATH = "/home/pypoker/user.db"
-DATABASE_PATH = "/Users/f/Downloads/user.db"
+DATABASE_PATH = "database/user.db"
 INIT_MONEY = 3000
 
 
@@ -80,6 +80,30 @@ def reset_player_in_db():
         conn.close()
 
 
+def reset_players_in_db(player_ids):
+    """
+    重置指定玩家列表的积分
+    :param player_ids: 玩家ID列表
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        placeholders = ', '.join('?' for _ in player_ids)
+        sql = f"UPDATE users SET money = ?, loan = 0, hands = 0 WHERE id IN ({placeholders})"
+        
+        # The first argument is INIT_MONEY, followed by the player IDs
+        params = [INIT_MONEY] + player_ids
+        cursor.execute(sql, params)
+        conn.commit()
+    except Exception as e:
+        print(f"Error resetting specific players data in database: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def query_all_data(table):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -113,11 +137,16 @@ def query_all_data(table):
         conn.close()
 
 
-def query_ranking_in_db():
+def query_ranking_in_db(player_names=None):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT username, money, loan, hands, id FROM users")
+        if player_names:
+            placeholders = ', '.join('?' for _ in player_names)
+            sql = f"SELECT username, money, loan, hands, id FROM users WHERE username IN ({placeholders})"
+            cursor.execute(sql, player_names)
+        else:
+            cursor.execute("SELECT username, money, loan, hands, id FROM users")
         rows = cursor.fetchall()
         # 结果转为列表
         return [list(row) for row in rows]
@@ -131,8 +160,13 @@ def query_ranking_in_db():
 
 def get_ranking_list():
     # 获取排行列表
-    all_player_data = query_ranking_in_db()
     daily_ranking = get_daily_ranking()
+    active_players = list(daily_ranking.keys())
+
+    if not active_players:
+        return []
+
+    all_player_data = query_ranking_in_db(active_players)
     ranking_data = []
     for player_data in all_player_data:
         player_name, player_money, player_loan, player_hands, _ = player_data[0], player_data[1], player_data[2], \
@@ -143,9 +177,12 @@ def get_ranking_list():
         avg_profit = 0 if player_hands == 0 else round((player_total_money - INIT_MONEY) / player_hands, 2) * 100
         daily_profit = daily_ranking.get(player_name, 0)
         ranking_data.append((player_name, player_total_money, avg_profit, daily_profit))
-    ranking_data = sorted(ranking_data, key=lambda x: x[2], reverse=True)
+    
+    # Sort by total money (descending)
+    ranking_data = sorted(ranking_data, key=lambda x: x[1], reverse=True)
 
     return ranking_data
+
 
 
 def delete_player_in_db(player_name):
@@ -225,7 +262,7 @@ def create_daily_table():
                 username TEXT NOT NULL,
                 start_money FLOAT DEFAULT ?,
                 latest_money FLOAT DEFAULT ?,
-                date DATE DEFAULT (date('now', 'localtime'))
+                "date" DATE DEFAULT (date('now', 'localtime'))
             )
         """, (INIT_MONEY, INIT_MONEY))
         conn.commit()
@@ -243,7 +280,7 @@ def update_daily_table(username, money):
         cursor.execute("""
             UPDATE daily
             SET latest_money = ?
-            WHERE username = ? AND date = date('now', 'localtime')
+            WHERE username = ? AND "date" = date('now', 'localtime')
         """, (money, username))
         conn.commit()
     except Exception as e:
@@ -276,7 +313,7 @@ def is_player_active_today(username):
     try:
         cursor.execute("""
             SELECT * FROM daily
-            WHERE username = ? AND date = date('now', 'localtime')
+            WHERE username = ? AND "date" = date('now', 'localtime')
         """, (username,))
         result = cursor.fetchone()
         if result is not None:
@@ -300,7 +337,6 @@ def update_daily_ranking():
         player_total_money = player_money - (1000 * player_loan)
         if is_player_active_today(player_name):
             update_daily_table(player_name, player_total_money)
-            print(f'玩家{player_name}今天玩过了,更新总金额{player_total_money}')
         else:
             last_hand = query_latest_hand(player_name)  # 上一次玩的最后积分数，为空则代表是新玩家
             if not last_hand:
@@ -343,9 +379,10 @@ def get_daily_ranking():
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT username, start_money, latest_money, date FROM daily
+            SELECT username, start_money, latest_money, "date" FROM daily
             WHERE date = date('now', 'localtime')
-        """)
+        """
+        )
         result = cursor.fetchall()
         result = [list(row) for row in result]
         ranking_data = {}
@@ -370,7 +407,8 @@ def reset_daily_table():
     try:
         cursor.execute("""
             SELECT username FROM users
-        """)
+        """
+        )
         result = cursor.fetchall()
         for row in result:
             usernames.append(row[0])

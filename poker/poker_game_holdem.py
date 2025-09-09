@@ -130,7 +130,6 @@ class HoldemPokerGame(PokerGame):
     def _save_player_data(self):
         # 将玩家数据保存到数据库
         for player in self._game_players.all:
-            print(f'保存数据 --- {player.name} --- {player.money} --- {player.loan}')
             update_player_in_db(player.dto())
         # 更新每日排行榜
         update_daily_ranking()
