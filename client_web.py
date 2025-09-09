@@ -5,7 +5,6 @@ import uuid
 import gevent
 import redis
 from flask import Flask, render_template, redirect, session, url_for, request, flash, jsonify
-from markupsafe import escape
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,10 +13,13 @@ from poker.channel import ChannelError, MessageFormatError, MessageTimeout
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
 from poker.database import get_db_connection, get_ranking_list
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "!!_-pyp0k3r-_!!"
 app.debug = False
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
