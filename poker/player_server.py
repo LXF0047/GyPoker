@@ -11,6 +11,7 @@ class PlayerServer(Player):
         Player.__init__(self, *args, **kwargs)
         self._channel: Channel = channel
         self._connected: bool = True
+        self.wants_to_start_final_10_hands: bool = False
         self._logger = logger if logger else logging
 
     def disconnect(self):
@@ -40,6 +41,8 @@ class PlayerServer(Player):
             MessageFormatError.validate_message_type(message, expected="pong")
             if "ready" in message:
                 self._ready = bool(message["ready"])
+            if "start_final_10_hands" in message:
+                self.wants_to_start_final_10_hands = bool(message["start_final_10_hands"])
             return True
         except (ChannelError, MessageTimeout, MessageFormatError) as e:
             self._logger.error("Unable to ping {}: {}".format(self, e))

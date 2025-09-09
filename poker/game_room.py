@@ -25,6 +25,7 @@ class GameRoomPlayers:
     def __init__(self, room_size: int):
         self._seats: List[Optional[str]] = [None] * room_size  # 初始化房间座位
         self._players: Dict[str, PlayerServer] = {}  # 玩家id和PlayerServer映射
+        self._player_join_order: List[str] = []  # 记录玩家加入顺序
         self._lock = threading.Lock()
 
     @property
@@ -84,6 +85,7 @@ class GameRoomPlayers:
             else:
                 self._seats[free_seat] = player.id
                 self._players[player.id] = player
+                self._player_join_order.append(player.id)
         finally:
             self._lock.release()
 
@@ -101,6 +103,7 @@ class GameRoomPlayers:
         else:
             self._seats[seat] = None
             del self._players[player_id]
+            self._player_join_order.remove(player_id)
         finally:
             self._lock.release()
 
@@ -119,11 +122,12 @@ class GameRoomEventHandler:
         self._room_id: str = room_id
         self._logger = logger
 
-    def room_event(self, event, player_id):
+    def room_event(self, event, player_id, owner_id: Optional[str]):
         """
         记录和广播房间事件。
         :param event: 事件类型
         :param player_id: 涉及的玩家ID
+        :param owner_id: 当前房主ID
         """
         self._logger.debug(
             "\n" +
@@ -142,7 +146,8 @@ class GameRoomEventHandler:
             "room_id": self._room_id,
             "players": {player.id: player.dto() for player in self._room_players.players},
             "player_ids": self._room_players.seats,
-            "player_id": player_id
+            "player_id": player_id,
+            "owner_id": owner_id
         })
 
     def broadcast(self, message):
@@ -173,6 +178,10 @@ class GameRoom(GameSubscriber):
         self.id = id
         self.private = private
         self.active = False
+        self.owner: Optional[str] = None
+        self.final_hands_countdown: int = 0
+        self.is_final_countdown: bool = False
+        self.current_hand_count: int = 0
         self._game_factory = game_factory
         self._room_players = GameRoomPlayers(room_size)  # 管理玩家
         self._room_event_handler = GameRoomEventHandler(self._room_players, self.id, logger)  # 管理房间
@@ -184,13 +193,15 @@ class GameRoom(GameSubscriber):
         self._lock.acquire()
         try:
             try:
-                self._room_players.add_player(player)  # 在GameRoomPlayer中添加玩家
-                self._room_event_handler.room_event("player-added", player.id)  # 将player-added事件广播给房间内所有玩家
+                self._room_players.add_player(player)
+                if self.owner is None:
+                    self.owner = player.id
+                self._room_event_handler.room_event("player-added", player.id, self.owner)
             except DuplicateRoomPlayerException:
                 old_player = self._room_players.get_player(player.id)
                 old_player.update_channel(player)
                 player = old_player
-                self._room_event_handler.room_event("player-rejoined", player.id)
+                self._room_event_handler.room_event("player-rejoined", player.id, self.owner)
 
             for event_message in self._event_messages:
                 # 将事件信息广播给加入的玩家
@@ -212,10 +223,18 @@ class GameRoom(GameSubscriber):
         处理玩家离开的内部方法。
         :param player_id: 离开的玩家ID
         """
-        player = self._room_players.get_player(player_id)  # 获取某id的PlayerServer
+        player = self._room_players.get_player(player_id)
         player.disconnect()
-        self._room_players.remove_player(player.id)  # 使用管理玩家类GameRoomPlayers中移除
-        self._room_event_handler.room_event("player-removed", player.id)  # 广播player-removed事件
+        self._room_players.remove_player(player.id)
+
+        if player_id == self.owner:
+            join_order = self._room_players._player_join_order
+            if join_order:
+                self.owner = join_order[0]
+            else:
+                self.owner = None
+        
+        self._room_event_handler.room_event("player-removed", player.id, self.owner)
 
     def game_event(self, event: str, event_data: dict):
         """
@@ -279,6 +298,18 @@ class GameRoom(GameSubscriber):
             while True:
                 try:
                     self.remove_inactive_players()
+
+                    for p in self._room_players.players:
+                        if p.wants_to_start_final_10_hands and p.id == self.owner and not self.is_final_countdown:
+                            self.is_final_countdown = True
+                            self.final_hands_countdown = 10
+                            self.current_hand_count = 0
+                            self._room_event_handler.broadcast({
+                                "message_type": "final-hands-started",
+                                "countdown": self.final_hands_countdown
+                            })
+                            p.wants_to_start_final_10_hands = False # Reset flag
+
                     # 检查准备状态
                     if not self.all_players_ready():
                         continue
@@ -286,6 +317,19 @@ class GameRoom(GameSubscriber):
                     players = self._room_players.players
                     if len(players) < 2:
                         raise GameError("At least two players needed to start a new game")
+
+                    if self.is_final_countdown:
+                        self.current_hand_count += 1
+                        if self.current_hand_count > self.final_hands_countdown:
+                            self._room_event_handler.broadcast({"message_type": "final-hands-finished"})
+                            self.is_final_countdown = False
+                            self.current_hand_count = 0
+                        else:
+                            self._room_event_handler.broadcast({
+                                "message_type": "final-hands-update",
+                                "current_hand": self.current_hand_count,
+                                "total_hands": self.final_hands_countdown
+                            })
 
                     dealer_key = (dealer_key + 1) % len(players)  # 更新庄家位置
                     game = self._game_factory.create_game(players)  # game是HoldemPokerGame()

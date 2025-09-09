@@ -1,6 +1,7 @@
 PyPoker = {
 
     socket: null,
+    wantsToStartFinalHands: false, // Flag to signal owner's intent
 
     Chat: {
         sendMessage: function (message) {
@@ -626,16 +627,10 @@ PyPoker = {
         onBet: function (message) {
             // PyPoker.Player.enableBetMode(message);
             PyPoker.Player.enableBetModeNew(message)
-            $("html, body").animate({
-                scrollTop: $(document).height()
-            }, "slow");
         },
 
         onChangeCards: function (message) {
             PyPoker.Player.setCardsChangeMode(true);
-            $("html, body").animate({
-                scrollTop: $(document).height()
-            }, "slow");
         },
 
         toggleReadyStatus: function () {
@@ -733,6 +728,21 @@ PyPoker = {
                 PyPoker.Room.initRoom(message);
             }
 
+            // Check for owner status and show/hide the button
+            if (message.owner_id == PyPoker.Game.getCurrentPlayerId()) {
+                $('#last-10-hands-btn').show();
+            } else {
+                $('#last-10-hands-btn').hide();
+            }
+
+            // Update room owner name
+            if (message.owner_id && message.players[message.owner_id]) {
+                const ownerName = message.players[message.owner_id].name;
+                $('#room-owner-name').text(ownerName);
+            } else {
+                $('#room-owner-name').text('');
+            }
+
             switch (message.event) {
                 case 'player-added':
                     playerId = message.player_id;
@@ -790,10 +800,16 @@ PyPoker = {
                 case 'ping':
                     const readyBtn = $('#ready-btn');
                     const isReady = readyBtn.val() === 'Cancel';
-                    PyPoker.socket.emit('game_message', {
+                    let pongMsg = {
                         'message_type': 'pong',
                         'ready': isReady
-                    });
+                    };
+                    // Piggyback the final hands request on the pong message
+                    if (PyPoker.wantsToStartFinalHands) {
+                        pongMsg.start_final_10_hands = true;
+                        PyPoker.wantsToStartFinalHands = false; // Reset flag after sending
+                    }
+                    PyPoker.socket.emit('game_message', pongMsg);
                     break;
                 case 'room-update':
                     PyPoker.Room.onRoomUpdate(data);
@@ -803,6 +819,20 @@ PyPoker = {
                     break;
                 case 'chat_message':
                     PyPoker.Chat.addMessage(data.sender_id, data.sender_name, data.message);
+                    break;
+                // Handle countdown events
+                case 'final-hands-started':
+                    $('#last-10-hands-btn').hide();
+                    $('#hand-countdown-display').text(`最后 ${data.countdown} 把开始`).show();
+                    break;
+                case 'final-hands-update':
+                    $('#hand-countdown-display').text(`第 ${data.current_hand} / ${data.total_hands} 局`);
+                    break;
+                case 'final-hands-finished':
+                    alert('10局游戏已结束。');
+                    $('#hand-countdown-display').hide();
+                    // Also re-enable the "last 10 hands" button for the owner for a new countdown
+                    $('#last-10-hands-btn').val('最后10把').prop('disabled', false);
                     break;
             }
         });
@@ -814,9 +844,16 @@ PyPoker = {
 
         PyPoker.Game.fetchRankingData();
 
-        // 准备按钮
+        // --- Event Handlers ---
+
         $('#ready-btn').click(function () {
             PyPoker.Player.toggleReadyStatus();
+        });
+
+        // Owner clicks the button to start the final 10 hands
+        $('#last-10-hands-btn').click(function() {
+            PyPoker.wantsToStartFinalHands = true;
+            $(this).val('下把开始最后10把').prop('disabled', true);
         });
 
         $('#cards-change-cmd').click(function () {

@@ -45,12 +45,14 @@
 
         <div id="right-panel" class="col-sm-4">
             <div id="current-player-wrapper">
-                <h4>Room id {{ room }}</h4>
+                <h4>Room id {{ room }} - Room owner: <span id="room-owner-name"></span></h4>
                 <h4>Hi {{ username }}!</h4>
                 <div id="ready-status">
                     <input type="button" id="ready-btn" class="btn btn-info" value="Ready"/>
                     <span id="status-indicator"
                           style="display:inline-block; width: 10px; height: 10px; background-color: red; border-radius: 50%;"></span>
+                    <input type="button" id="last-10-hands-btn" class="btn btn-warning" value="最后10把" style="display: none;"/>
+                    <span id="hand-countdown-display" style="display: none; margin-left: 10px;"></span>
                 </div>
                 <div id="game-status" class="hidden">
                     <p data-key="4"></p>
