@@ -52,6 +52,9 @@
                     <span id="status-indicator"
                           style="display:inline-block; width: 10px; height: 10px; background-color: red; border-radius: 50%;"></span>
                     <input type="button" id="last-10-hands-btn" class="btn btn-warning" value="最后10把" style="display: none;"/>
+                    {% if is_owner %}
+                    <input type="button" id="reset-scores-btn" class="btn btn-danger" value="清空积分"/>
+                    {% endif %}
                     <span id="hand-countdown-display" style="display: none; margin-left: 10px;"></span>
                 </div>
                 <div id="game-status" class="hidden">
@@ -87,7 +90,8 @@
                         <th>玩家</th>
                         <th>总积分</th>
                         <th>bb/100 hands</th>
-                        <th>今日净胜分</th>
+                        <th>当日总积分</th>
+                        <th>当日净胜分</th>
                     </tr>
                     </thead>
                     <tbody>

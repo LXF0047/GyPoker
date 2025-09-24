@@ -8,7 +8,8 @@ from .player import Player
 from .poker_game import PokerGame, GameFactory, GameError, EndGameException, GamePlayers, \
     GameEventDispatcher, GameSubscriber
 from .score_detector import HoldemPokerScoreDetector
-from .database import update_player_in_db, get_ranking_list, query_player_msg_in_db, update_daily_ranking, get_daily_ranking
+from .database import INIT_MONEY
+from .database import update_player_in_db, get_ranking_list, query_player_msg_in_db, update_daily_ranking, get_daily_ranking, update_game_count
 import logging
 
 
@@ -113,7 +114,7 @@ class HoldemPokerGame(PokerGame):
                 # self._event_dispatcher.dead_player_event(player)
                 # self._game_players.remove(player.id)
                 # 为玩家重新平分配1000并记录贷款行为
-                print(f'玩家{player.name}输没了，自动贷款1000')
+                print(f'玩家{player.name}输没了，自动贷款{INIT_MONEY}')
                 player.add_loan()
 
     def __loan_refunding(self):
@@ -122,7 +123,7 @@ class HoldemPokerGame(PokerGame):
             loan_times = query_player_msg_in_db(player.name, 'loan')  # 贷款次数
             if loan_times > 0:
                 current_money = query_player_msg_in_db(player.name, 'money')  # 当前积分
-                refund_times = (current_money - 1000) // 1000 if current_money > 1000 else 0  # 超过1000部分如果超过1000的整数倍就归还
+                refund_times = (current_money - INIT_MONEY) // INIT_MONEY if current_money > INIT_MONEY else 0  # 超过INIT_MONEY部分如果超过INIT_MONEY的整数倍就归还
                 if refund_times > 0:
                     player.refund_money(min(refund_times, loan_times))  # 赢的太多只还贷的部分
                     print(f'玩家{player.name}归还贷款{refund_times}次')
@@ -131,6 +132,8 @@ class HoldemPokerGame(PokerGame):
         # 将玩家数据保存到数据库
         for player in self._game_players.all:
             update_player_in_db(player.dto())
+            # 每局游戏结束后增加游戏局数
+            update_game_count(player.name)
         # 更新每日排行榜
         update_daily_ranking()
 

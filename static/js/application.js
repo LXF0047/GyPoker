@@ -2,6 +2,7 @@ PyPoker = {
 
     socket: null,
     wantsToStartFinalHands: false, // Flag to signal owner's intent
+    wantsToResetScores: false, // Flag to signal owner's intent to reset scores
 
     Chat: {
         sendMessage: function (message) {
@@ -313,26 +314,27 @@ PyPoker = {
         },
 
         updateRankingList: function (message) {
-            //message为有序的玩家数据元组列表 [(player_name, player_total_money, avg_profit), (player_name, player_total_money, avg_profit)]
+            //message为有序的玩家数据元组列表 [(排名, 玩家姓名, 总积分, bb/100 hands, 当日总积分, 当日净胜分)]
             const rankingTableBody = document.querySelector('#ranking-table tbody');
 
             // 清空当前表格内容
             rankingTableBody.innerHTML = '';
 
             // 遍历 message 数据，填充表格行
-            message.forEach((player, index) => {
-                const [playerName, totalMoney, avgProfit, dailyProfit] = player;
+            message.forEach((player) => {
+                const [rank, playerName, totalScore, bbPer100, dailyTotal, dailyProfit] = player;
 
                 // 创建表格行
                 const row = document.createElement('tr');
 
                 // 填充表格列
                 row.innerHTML = `
-                    <td>${index + 1}</td> <!-- 排名 -->
+                    <td>${rank}</td> <!-- 排名 -->
                     <td>${playerName}</td> <!-- 玩家姓名 -->
-                    <td>$${totalMoney}</td> <!-- 总金额 -->
-                    <td>${avgProfit.toFixed(2)}</td> <!-- 平均收益 -->
-                    <td>${dailyProfit.toFixed(2)}</td> <!-- mei日 -->
+                    <td>$${totalScore}</td> <!-- 总积分 -->
+                    <td>${bbPer100}</td> <!-- bb/100 hands -->
+                    <td>$${dailyTotal}</td> <!-- 当日总积分 -->
+                    <td>$${dailyProfit}</td> <!-- 当日净胜分 -->
                 `;
 
                 // 添加行到表格
@@ -731,8 +733,10 @@ PyPoker = {
             // Check for owner status and show/hide the button
             if (message.owner_id == PyPoker.Game.getCurrentPlayerId()) {
                 $('#last-10-hands-btn').show();
+                $('#reset-scores-btn').show();
             } else {
                 $('#last-10-hands-btn').hide();
+                $('#reset-scores-btn').hide();
             }
 
             // Update room owner name
@@ -774,6 +778,33 @@ PyPoker = {
                         }
                     });
                     break;
+
+                case 'player-rejoined':
+                    playerId = message.player_id;
+                    player = message.players[playerId];
+                    playerName = playerId == $('#current-player').attr('data-player-id') ? 'You' : (player ? player.name : 'Unknown');
+                    PyPoker.Logger.log(playerName + ' reconnected to the room');
+                    
+                    if (player) {
+                        // Find the seat for the rejoining player and update it
+                        var seatUpdated = false;
+                        $('.seat').each(function () {
+                            seat = $(this).attr('data-key');
+                            if (message.player_ids[seat] == playerId) {
+                                // Clear the seat and add the updated player info
+                                $(this).empty();
+                                $(this).append(PyPoker.Room.createPlayer(player));
+                                $(this).attr('data-player-id', playerId);
+                                seatUpdated = true;
+                                return false; // Break the loop
+                            }
+                        });
+                        
+                        if (!seatUpdated) {
+                            PyPoker.Logger.log('Warning: Could not find seat for rejoining player ' + playerId);
+                        }
+                    }
+                    break;
             }
         },
     },
@@ -808,6 +839,10 @@ PyPoker = {
                     if (PyPoker.wantsToStartFinalHands) {
                         pongMsg.start_final_10_hands = true;
                         PyPoker.wantsToStartFinalHands = false; // Reset flag after sending
+                    }
+                    if (PyPoker.wantsToResetScores) {
+                        pongMsg.reset_scores = true;
+                        PyPoker.wantsToResetScores = false; // Reset flag after sending
                     }
                     PyPoker.socket.emit('game_message', pongMsg);
                     break;
@@ -854,6 +889,21 @@ PyPoker = {
         $('#last-10-hands-btn').click(function() {
             PyPoker.wantsToStartFinalHands = true;
             $(this).val('下把开始最后10把').prop('disabled', true);
+        });
+
+        $('#reset-scores-btn').click(function() {
+            if (confirm('确定要清空所有玩家的积分吗？')) {
+                PyPoker.wantsToResetScores = true;
+                $(this).val('请求已发送').prop('disabled', true);
+            }
+        });
+
+        $('#reset-scores-btn').click(function() {
+            if (confirm('确定要清空所有玩家的积分吗？此操作不可逆转。')) {
+                PyPoker.socket.emit('game_message', {
+                    'message_type': 'reset_scores'
+                });
+            }
         });
 
         $('#cards-change-cmd').click(function () {

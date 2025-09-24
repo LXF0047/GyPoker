@@ -33,6 +33,8 @@ class PlayerServer(Player):
         self.disconnect()
         self._channel = new_player.channel
         self._connected = new_player.connected
+        # 重连时从数据库同步最新的金额和贷款数据
+        self.sync_from_database()
 
     def ping(self) -> bool:
         try:
@@ -43,11 +45,10 @@ class PlayerServer(Player):
                 self._ready = bool(message["ready"])
             if "start_final_10_hands" in message:
                 self.wants_to_start_final_10_hands = bool(message["start_final_10_hands"])
-            if "reset_scores" in message:
-                self.wants_to_reset_scores = bool(message["reset_scores"])
             return True
         except (ChannelError, MessageTimeout, MessageFormatError) as e:
-            self._logger.error("Unable to ping {}: {}".format(self, e))
+            # 降低日志级别，ping超时是正常的重连场景
+            self._logger.info("Player {} disconnected during ping: {}".format(self, e))
             self.disconnect()
             return False
 

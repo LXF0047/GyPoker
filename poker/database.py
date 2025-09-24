@@ -159,29 +159,50 @@ def query_ranking_in_db(player_names=None):
 
 
 def get_ranking_list():
-    # 获取排行列表
+    """
+    获取新的排行榜数据
+    返回格式: (排名, 玩家姓名, 总积分, bb/100 hands, 当日总积分, 当日净胜分)
+    按当日净胜分排序
+    """
+    # 获取当日活跃玩家及其净胜分
     daily_ranking = get_daily_ranking()
-    active_players = list(daily_ranking.keys())
-
-    if not active_players:
+    if not daily_ranking:
         return []
 
-    all_player_data = query_ranking_in_db(active_players)
+    # 获取总积分数据
+    total_scores_data = get_all_total_scores()
+    total_scores_dict = {row[0]: {'total_score': row[1], 'game_count': row[2]} for row in total_scores_data}
+
     ranking_data = []
-    for player_data in all_player_data:
-        player_name, player_money, player_loan, player_hands, _ = player_data[0], player_data[1], player_data[2], \
-            player_data[3], player_data[4]
+    BIG_BLIND = 10  # 大盲值
+    
+    for player_name, daily_profit in daily_ranking.items():
         if player_name.startswith('admin'):
             continue
-        player_total_money = player_money - (1000 * player_loan)
-        avg_profit = 0 if player_hands == 0 else round((player_total_money - INIT_MONEY) / player_hands, 2) * 100
-        daily_profit = daily_ranking.get(player_name, 0)
-        ranking_data.append((player_name, player_total_money, avg_profit, daily_profit))
+            
+        # 总积分
+        total_score = total_scores_dict.get(player_name, {}).get('total_score', 0)
+        game_count = total_scores_dict.get(player_name, {}).get('game_count', 0)
+        
+        # bb/100 hands计算: 总积分 / 大盲值 / 游戏次数 * 100
+        bb_per_100 = 0
+        if game_count > 0:
+            bb_per_100 = round((total_score / BIG_BLIND / game_count) * 100, 2)
+        
+        # 当日总积分 = 初始金额 + 当日净胜分
+        daily_total = INIT_MONEY + daily_profit
+        
+        ranking_data.append((player_name, total_score, bb_per_100, daily_total, daily_profit))
     
-    # Sort by total money (descending)
-    ranking_data = sorted(ranking_data, key=lambda x: x[1], reverse=True)
-
-    return ranking_data
+    # 按当日净胜分降序排序
+    ranking_data = sorted(ranking_data, key=lambda x: x[4], reverse=True)
+    
+    # 添加排名
+    final_ranking = []
+    for i, data in enumerate(ranking_data, 1):
+        final_ranking.append((i, data[0], data[1], data[2], data[3], data[4]))
+    
+    return final_ranking
 
 
 
@@ -273,6 +294,140 @@ def create_daily_table():
         conn.close()
 
 
+def create_total_scores_table():
+    """创建总积分历史记录表，支持多种游戏类型"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS total_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                game_type INTEGER DEFAULT 1,
+                total_score FLOAT DEFAULT 0,
+                game_count INTEGER DEFAULT 0,
+                created_date DATE DEFAULT (date('now', 'localtime')),
+                updated_date DATE DEFAULT (date('now', 'localtime')),
+                UNIQUE(username, game_type)
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"Error creating total_scores table: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_total_score_daily(username, daily_profit, game_type=1):
+    """每日结算时更新玩家总积分（不增加游戏局数）"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 检查是否已存在该玩家的记录
+        cursor.execute("""
+            SELECT total_score FROM total_scores 
+            WHERE username = ? AND game_type = ?
+        """, (username, game_type))
+        result = cursor.fetchone()
+        
+        if result:
+            # 更新现有记录，只更新总积分，不增加游戏局数
+            new_total = result[0] + daily_profit
+            cursor.execute("""
+                UPDATE total_scores 
+                SET total_score = ?, updated_date = date('now', 'localtime')
+                WHERE username = ? AND game_type = ?
+            """, (new_total, username, game_type))
+        else:
+            # 插入新记录
+            cursor.execute("""
+                INSERT INTO total_scores (username, game_type, total_score, game_count)
+                VALUES (?, ?, ?, 0)
+            """, (username, game_type, daily_profit))
+        
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating total score daily: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def update_game_count(username, game_type=1):
+    """每局游戏结束后增加游戏局数"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 检查是否已存在该玩家的记录
+        cursor.execute("""
+            SELECT game_count FROM total_scores 
+            WHERE username = ? AND game_type = ?
+        """, (username, game_type))
+        result = cursor.fetchone()
+        
+        if result:
+            # 更新现有记录的游戏局数
+            cursor.execute("""
+                UPDATE total_scores 
+                SET game_count = game_count + 1, updated_date = date('now', 'localtime')
+                WHERE username = ? AND game_type = ?
+            """, (username, game_type))
+        else:
+            # 插入新记录，游戏局数为1
+            cursor.execute("""
+                INSERT INTO total_scores (username, game_type, total_score, game_count)
+                VALUES (?, ?, 0, 1)
+            """, (username, game_type))
+        
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating game count: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_total_score(username, game_type=1):
+    """获取玩家总积分"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT total_score FROM total_scores 
+            WHERE username = ? AND game_type = ?
+        """, (username, game_type))
+        result = cursor.fetchone()
+        return result[0] if result else 0
+    except Exception as e:
+        print(f"Error getting total score: {e}")
+        return 0
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def get_all_total_scores(game_type=1):
+    """获取所有玩家的总积分数据"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT username, total_score, game_count FROM total_scores 
+            WHERE game_type = ?
+            ORDER BY total_score DESC
+        """, (game_type,))
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"Error getting all total scores: {e}")
+        return []
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def update_daily_table(username, money):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -334,7 +489,7 @@ def update_daily_ranking():
         player_name, player_money, player_loan, player_hands, player_id = player_data[0], player_data[1], player_data[
             2], \
             player_data[3], player_data[4]
-        player_total_money = player_money - (1000 * player_loan)
+        player_total_money = player_money - (INIT_MONEY * player_loan)
         if is_player_active_today(player_name):
             update_daily_table(player_name, player_total_money)
         else:
@@ -414,6 +569,8 @@ def reset_daily_table():
             usernames.append(row[0])
         # 清空 daily 表中所有数据
         cursor.execute("DELETE FROM daily")
+        # 重置自增序列
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='daily'")
         insert_data = [(username, INIT_MONEY, INIT_MONEY, '2024-01-01') for username in usernames]
         cursor.executemany("""
             INSERT INTO daily (username, start_money, latest_money, date)
@@ -427,6 +584,88 @@ def reset_daily_table():
     finally:
         cursor.close()
         conn.close()
+
+
+def daily_settlement_task():
+    """凌晨1点执行的每日结算任务"""
+    try:
+        print("开始执行每日结算任务...")
+        
+        # 获取当日所有玩家的净胜分
+        daily_ranking = get_daily_ranking()
+        
+        # 将当日净胜分累加到总积分
+        for username, daily_profit in daily_ranking.items():
+            if not username.startswith('admin'):
+                update_total_score_daily(username, daily_profit)
+                print(f"更新玩家 {username} 总积分，当日净胜分: {daily_profit}")
+        
+        # 重置daily表（清空所有当日数据）
+        reset_daily_table_for_new_day()
+        
+        print("每日结算任务完成！")
+        
+    except Exception as e:
+        print(f"每日结算任务执行失败: {e}")
+
+
+def reset_daily_table_for_new_day():
+    """重置daily表为新的一天"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 删除所有昨天的数据
+        cursor.execute("DELETE FROM daily")
+        
+        # 重置自增序列
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='daily'")
+        
+        conn.commit()
+        print("daily表已重置为新的一天")
+        
+    except Exception as e:
+        print(f"重置daily表失败: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def start_daily_settlement_scheduler():
+    """启动每日结算的定时调度器"""
+    import threading
+    import time
+    from datetime import datetime, time as dt_time
+    
+    def run_scheduler():
+        while True:
+            now = datetime.now()
+            # 设置目标时间为凌晨1点
+            target_time = dt_time(1, 0, 0)  # 01:00:00
+            
+            # 计算到下一个凌晨1点的秒数
+            if now.time() < target_time:
+                # 今天的凌晨1点还没到
+                target_datetime = now.replace(hour=1, minute=0, second=0, microsecond=0)
+            else:
+                # 今天的凌晨1点已过，等待明天的凌晨1点
+                from datetime import timedelta
+                target_datetime = (now + timedelta(days=1)).replace(hour=1, minute=0, second=0, microsecond=0)
+            
+            # 计算等待时间
+            wait_seconds = (target_datetime - now).total_seconds()
+            print(f"下次每日结算时间: {target_datetime}, 等待 {wait_seconds/3600:.1f} 小时")
+            
+            # 等待到指定时间
+            time.sleep(wait_seconds)
+            
+            # 执行每日结算任务
+            daily_settlement_task()
+    
+    # 在后台线程中运行调度器
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    print("每日结算调度器已启动")
 
 
 if __name__ == '__main__':

@@ -67,14 +67,14 @@ class GameServerRedis(GameServer):
         except ValueError:
             raise MessageFormatError(attribute="player.money",
                                      desc="'{}' is not a number".format(message["player"]["money"]))
-        # player loan
+        # player loan (loan是借款次数，应该是整数)
         try:
-            player_loan = float(message["player"]["loan"])
+            player_loan = int(message["player"]["loan"])
         except KeyError:
             raise MessageFormatError(attribute="player.loan", desc="Missing attribute")
         except ValueError:
             raise MessageFormatError(attribute="player.loan",
-                                     desc="'{}' is not a number".format(message["player"]["loan"]))
+                                     desc="'{}' is not a valid integer".format(message["player"]["loan"]))
         # room id
         try:
             game_room_id = str(message["room_id"])

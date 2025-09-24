@@ -5,6 +5,7 @@ import gevent
 
 from .player_server import PlayerServer
 from .poker_game import GameSubscriber, GameError, GameFactory
+from .database import reset_players_in_db, INIT_MONEY
 
 
 class FullGameRoomException(Exception):
@@ -189,6 +190,7 @@ class GameRoom(GameSubscriber):
         self._logger = logger
         self._lock = threading.Lock()
 
+
     def join(self, player: PlayerServer):
         self._lock.acquire()
         try:
@@ -199,8 +201,14 @@ class GameRoom(GameSubscriber):
                 self._room_event_handler.room_event("player-added", player.id, self.owner)
             except DuplicateRoomPlayerException:
                 old_player = self._room_players.get_player(player.id)
+                # 记录重连前的数据
+                old_money = old_player.money
+                old_loan = old_player.loan
+                # 更新连接并同步数据库数据
                 old_player.update_channel(player)
                 player = old_player
+                # 记录数据同步结果
+                self._logger.info(f"Player {player.id} reconnected. Money: {old_money} -> {player.money}, Loan: {old_loan} -> {player.loan}")
                 self._room_event_handler.room_event("player-rejoined", player.id, self.owner)
 
             for event_message in self._event_messages:
@@ -270,14 +278,34 @@ class GameRoom(GameSubscriber):
     def remove_inactive_players(self):
         """
         移除所有不活跃的玩家。
+        对于ping失败的玩家，给予短暂的重连机会。
         """
-
-        def ping_player(player):
+        import time
+        
+        def ping_player_with_grace_period(player):
             if not player.ping():
-                self.leave(player.id)
+                # 给予1秒的宽限期，允许重连
+                self._logger.info(f"Player {player.id} ping failed, giving grace period for reconnection")
+                time.sleep(1)
+                
+                # 再次检查玩家是否还在房间中（可能已重连）
+                try:
+                    current_player = self._room_players.get_player(player.id)
+                    if current_player and current_player != player:
+                        # 玩家已经重连，使用新的连接
+                        self._logger.info(f"Player {player.id} reconnected during grace period")
+                        return
+                except UnknownRoomPlayerException:
+                    # 玩家不在房间中，可能已被其他线程移除
+                    return
+                
+                # 如果仍然ping不通，则移除玩家
+                if not player.ping():
+                    self._logger.info(f"Removing inactive player {player.id} after grace period")
+                    self.leave(player.id)
 
         gevent.joinall([
-            gevent.spawn(ping_player, player)
+            gevent.spawn(ping_player_with_grace_period, player)
             for player in self._room_players.players
         ])
 
