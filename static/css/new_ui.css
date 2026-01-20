@@ -16,7 +16,7 @@
     --card-shadow: rgba(0,0,0,0.5);
 
     /* 可替换图像路径 - 修改这些变量即可更换牌桌和扑克牌样式 */
-    --table-image: url('/static/images/table.png');  /* 牌桌图像，设置为 url('/static/images/table.png') 来使用自定义牌桌 */
+    --table-image: url('/static/images/table.webp');  /* 牌桌图像，设置为 url('/static/images/table.webp') 来使用自定义牌桌 */
     --card-back-image: url('/static/images/card-back.png');  /* 牌背图像，设置为 url('/static/images/card-back.png') 来使用自定义牌背 */
     --card-sprite-image: none;  /* 扑克牌精灵图，设置为 url('/static/images/cards-sprite.png') 来使用自定义扑克牌 */
 }
