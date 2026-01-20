@@ -463,45 +463,49 @@ const PyPoker = {
 
         // 设置赢家
         setWinners: function(pot) {
-            document.querySelectorAll('.seat').forEach(seat => {
-                seat.classList.add('fold');
-                seat.classList.remove('winner');
-                // 移除旧的赢钱提示
-                const oldWin = seat.querySelector('.win-amount');
-                if (oldWin) oldWin.remove();
-            });
-
             const moneySplit = pot.money_split;
+            
+            // 不再重置所有座位状态，而是累加赢家信息
+            // 这样可以正确处理多边池的情况（先后触发多次 winner-designation）
 
-            for (let i in pot.winner_ids) {
-                const winnerId = pot.winner_ids[i];
-                const seat = document.querySelector(`.seat[data-player-id="${winnerId}"]`);
-                if (seat) {
-                    seat.classList.remove('fold');
-                    seat.classList.add('winner');
-                    
-                    // 显示赢得金额
-                    const winLabel = document.createElement('div');
-                    winLabel.className = 'win-amount';
-                    winLabel.textContent = `+$${moneySplit}`;
-                    // 简单的内联样式
-                    winLabel.style.position = 'absolute';
-                    winLabel.style.top = '-30px';
-                    winLabel.style.width = '100%';
-                    winLabel.style.textAlign = 'center';
-                    winLabel.style.color = '#FFD700';
-                    winLabel.style.fontWeight = 'bold';
-                    winLabel.style.fontSize = '1.2em';
-                    winLabel.style.textShadow = '0 2px 4px rgba(0,0,0,0.8)';
-                    winLabel.style.zIndex = '100';
-                    
-                    // 确保 seat 是 relative 或 absolute 定位
-                    if (getComputedStyle(seat).position === 'static') {
-                        seat.style.position = 'relative';
+            if (pot.winner_ids && Array.isArray(pot.winner_ids)) {
+                pot.winner_ids.forEach(winnerId => {
+                    const seat = document.querySelector(`.seat[data-player-id="${winnerId}"]`);
+                    if (seat) {
+                        seat.classList.remove('fold');
+                        seat.classList.add('winner');
+                        
+                        // 显示/累加赢得金额
+                        let winLabel = seat.querySelector('.win-amount');
+                        let currentAmount = 0;
+                        
+                        if (winLabel) {
+                            // 提取数字
+                            const text = winLabel.textContent.replace(/[^\d]/g, '');
+                            currentAmount = parseInt(text) || 0;
+                        } else {
+                            winLabel = document.createElement('div');
+                            winLabel.className = 'win-amount';
+                            winLabel.style.position = 'absolute';
+                            winLabel.style.top = '-30px';
+                            winLabel.style.width = '100%';
+                            winLabel.style.textAlign = 'center';
+                            winLabel.style.color = '#FFD700';
+                            winLabel.style.fontWeight = 'bold';
+                            winLabel.style.fontSize = '1.2em';
+                            winLabel.style.textShadow = '0 2px 4px rgba(0,0,0,0.8)';
+                            winLabel.style.zIndex = '100';
+                            
+                            if (getComputedStyle(seat).position === 'static') {
+                                seat.style.position = 'relative';
+                            }
+                            seat.appendChild(winLabel);
+                        }
+                        
+                        const newAmount = currentAmount + moneySplit;
+                        winLabel.textContent = `+$${newAmount}`;
                     }
-                    
-                    seat.appendChild(winLabel);
-                }
+                });
             }
         },
 

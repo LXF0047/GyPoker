@@ -1475,3 +1475,23 @@ input[type=range]::-webkit-slider-thumb:hover {
 .profit-pos { color: #2ecc71; }
 .profit-neg { color: #e74c3c; }
 .profit-neutral { color: var(--text-dim); }
+
+/* 赢家金额提示 */
+.win-amount {
+    position: absolute;
+    top: -30px;
+    width: 100%;
+    text-align: center;
+    color: #FFD700;
+    font-weight: bold;
+    font-size: 1.2em;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    z-index: 100;
+    animation: floatUp 1s ease-out forwards;
+}
+
+@keyframes floatUp {
+    0% { transform: translateY(0); opacity: 0; }
+    20% { opacity: 1; }
+    100% { transform: translateY(-20px); opacity: 1; }
+}

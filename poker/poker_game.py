@@ -909,7 +909,7 @@ class PokerGame:
                     pot=pot,
                     winners=winners,
                     money_split=money_split,
-                    upcoming_pots=pots[(i + 1):]
+                    upcoming_pots=pots[:-(i + 1)]
                 )
 
                 gevent.sleep(self.WAIT_AFTER_WINNER_DESIGNATION)
