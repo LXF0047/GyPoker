@@ -7,8 +7,7 @@
 import sqlite3
 
 # DATABASE_PATH = "/home/pypoker/user.db"
-# DATABASE_PATH = "database/user.db"
-DATABASE_PATH = "/Users/f/Documents/project/pypoker/database/user.db"
+DATABASE_PATH = "database/user.db"
 INIT_MONEY = 3000
 
 

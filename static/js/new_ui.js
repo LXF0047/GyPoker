@@ -30,7 +30,7 @@ const PyPoker = {
         // 是否使用自定义牌背图像
         useCustomCardBack: true,
         // 牌背图像路径
-        cardBackImage: '/static/images/card-back.png'
+        cardBackImage: '/static/images/cards/card-back.webp'
     },
 
     // 牌型名称

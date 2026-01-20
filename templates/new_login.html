@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>狗运牌 - 奢华棋牌体验</title>
+    <title>狗运牌</title>
 
     <!-- Shared Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+{#    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">#}
+{#    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">#}
 
     {% if mode == 'game' %}
     <!-- Game Mode Resources -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="/static/js/socket.io.js"></script>
     <link rel="stylesheet" href="/static/css/new_ui.css">
     <style>
         body {
-            background: url('/static/images/background.png') no-repeat center center fixed !important;
+            background: url('/static/images/background.webp') no-repeat center center fixed !important;
             background-size: cover !important;
         }
 
@@ -70,7 +70,7 @@
     </style>
     {% else %}
     <!-- Login/Register/Join Mode Resources -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/js/tailwindcss.js"></script>
     <style>
         :root {
             --gold: #d4af37;
@@ -94,8 +94,7 @@
             width: 100%;
             height: 100%;
             background-image:
-                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
-                url('https://images.unsplash.com/photo-1596838132731-dd93c882944c?auto=format&fit=crop&q=80&w=2070');
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7));
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -310,7 +309,7 @@
         <!-- 牌桌 -->
         <div class="table-wrapper">
             <!-- 荷官图片 -->
-            <img src="/static/images/croupier.png" alt="Croupier" class="croupier-img">
+            <img src="/static/images/croupier.webp" alt="Croupier" class="croupier-img">
             <!-- 荷官倒计时 -->
             <div id="dealer-countdown" class="dealer-countdown" style="display: none;">15</div>
 
@@ -649,7 +648,7 @@
             loader.classList.remove('hidden');
             display.innerText = "正在窥探天机...";
 
-            const systemPrompt = "你是一个在澳门赌场工作多年的资深荷官，说话风格奢华、神秘、老练。请根据当前的‘狗运牌’主题，为玩家生成一段简短的今日运势（50字以内）。";
+            const systemPrompt = "你是一个在澳门赌场工作多年的资深荷官，说话风格奢华、神秘、老练。请根据当前的‘德州扑克’主题，为玩家生成一段简短的今日运势（50字以内）。";
             const userPrompt = "请告诉我今天的运气如何，带一点博弈术语，比如‘红黑’、‘同花’、‘庄闲’等。";
 
             try {
