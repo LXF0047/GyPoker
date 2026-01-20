@@ -45,8 +45,7 @@ def update_player_in_db(player_data):
         cursor.execute("""
             UPDATE users
             SET money = ?,
-                loan = ?,
-                hands = hands + 1
+                loan = ?
             WHERE id = ?
         """, (player_data["money"], player_data["loan"], player_data["id"]))
 
@@ -482,9 +481,19 @@ def is_player_active_today(username):
         conn.close()
 
 
-def update_daily_ranking():
-    # 查所有玩家现在的数据
-    all_player_data = query_ranking_in_db()
+def update_daily_ranking(active_players=None):
+    """
+    更新每日排行榜数据
+    :param active_players: 当前游戏中的玩家列表，如果为None则查询所有玩家（保持向后兼容）
+    """
+    if active_players:
+        # 只处理当前游戏中的玩家
+        player_names = [player.name for player in active_players]
+        all_player_data = query_ranking_in_db(player_names)
+    else:
+        # 保持原有逻辑，查询所有玩家（向后兼容）
+        all_player_data = query_ranking_in_db()
+        
     for player_data in all_player_data:
         player_name, player_money, player_loan, player_hands, player_id = player_data[0], player_data[1], player_data[
             2], \
@@ -635,37 +644,63 @@ def start_daily_settlement_scheduler():
     """启动每日结算的定时调度器"""
     import threading
     import time
+    import logging
     from datetime import datetime, time as dt_time
     
-    def run_scheduler():
-        while True:
-            now = datetime.now()
-            # 设置目标时间为凌晨1点
-            target_time = dt_time(1, 0, 0)  # 01:00:00
-            
-            # 计算到下一个凌晨1点的秒数
-            if now.time() < target_time:
-                # 今天的凌晨1点还没到
-                target_datetime = now.replace(hour=1, minute=0, second=0, microsecond=0)
-            else:
-                # 今天的凌晨1点已过，等待明天的凌晨1点
-                from datetime import timedelta
-                target_datetime = (now + timedelta(days=1)).replace(hour=1, minute=0, second=0, microsecond=0)
-            
-            # 计算等待时间
-            wait_seconds = (target_datetime - now).total_seconds()
-            print(f"下次每日结算时间: {target_datetime}, 等待 {wait_seconds/3600:.1f} 小时")
-            
-            # 等待到指定时间
-            time.sleep(wait_seconds)
-            
-            # 执行每日结算任务
-            daily_settlement_task()
+    logger = logging.getLogger(__name__)
     
-    # 在后台线程中运行调度器
-    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    def run_scheduler():
+        logger.info("每日结算调度器线程启动")
+        
+        while True:
+            try:
+                now = datetime.now()
+                # 设置目标时间为凌晨1点
+                target_time = dt_time(1, 0, 0)  # 01:00:00
+                
+                # 计算到下一个凌晨1点的秒数
+                if now.time() < target_time:
+                    # 今天的凌晨1点还没到
+                    target_datetime = now.replace(hour=1, minute=0, second=0, microsecond=0)
+                else:
+                    # 今天的凌晨1点已过，等待明天的凌晨1点
+                    from datetime import timedelta
+                    target_datetime = (now + timedelta(days=1)).replace(hour=1, minute=0, second=0, microsecond=0)
+                
+                # 计算等待时间
+                wait_seconds = (target_datetime - now).total_seconds()
+                logger.info(f"下次每日结算时间: {target_datetime}, 等待 {wait_seconds/3600:.1f} 小时")
+                
+                # 分段等待，每小时检查一次，避免长时间阻塞
+                while wait_seconds > 0:
+                    sleep_time = min(3600, wait_seconds)  # 最多等待1小时
+                    logger.debug(f"等待 {sleep_time/60:.1f} 分钟...")
+                    time.sleep(sleep_time)
+                    wait_seconds -= sleep_time
+                    
+                    # 重新检查当前时间，防止时间偏差
+                    now = datetime.now()
+                    if now.time() >= target_time and now.date() == target_datetime.date():
+                        break
+                
+                # 执行每日结算任务
+                logger.info("开始执行每日结算任务...")
+                daily_settlement_task()
+                logger.info("每日结算任务执行完成")
+                
+                # 等待一分钟，避免重复执行
+                time.sleep(60)
+                
+            except Exception as e:
+                logger.error(f"调度器运行出错: {e}", exc_info=True)
+                # 出错后等待5分钟再重试
+                time.sleep(300)
+    
+    # 在后台线程中运行调度器（非守护线程，确保能完成任务）
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=False)
     scheduler_thread.start()
-    print("每日结算调度器已启动")
+    logger.info("每日结算调度器已启动")
+    print("每日结算调度器已启动")  # 保留print用于启动确认
 
 
 if __name__ == '__main__':

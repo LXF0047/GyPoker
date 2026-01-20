@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>狗运牌 - 奢华棋牌体验</title>
+
+    <!-- Shared Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    {% if mode == 'game' %}
+    <!-- Game Mode Resources -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link rel="stylesheet" href="/static/css/new_ui.css">
+    <style>
+        body {
+            background: url('/static/images/background.png') no-repeat center center fixed !important;
+            background-size: cover !important;
+        }
+
+        .poker-rail::before { display: none !important; }
+
+        .poker-rail {
+            background: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }
+
+        .poker-racetrack {
+            background: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }
+
+        .poker-felt {
+            background: var(--table-image) no-repeat center center !important;
+            background-size: contain !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            overflow: visible !important;
+        }
+
+        .poker-felt::before {
+            display: none !important;
+        }
+
+        .betting-line {
+            display: none !important;
+        }
+
+        .croupier-img {
+            position: absolute;
+            top: -30%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 18%;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .table-wrapper {
+            position: relative;
+            margin: 0 auto;
+            aspect-ratio: 2816 / 1536;
+            width: min(100%, calc(60vh * (2816 / 1536)));
+        }
+    </style>
+    {% else %}
+    <!-- Login/Register/Join Mode Resources -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --gold: #d4af37;
+            --dark-gold: #996515;
+            --casino-red: #b30000;
+            --bg-black: #0a0a0a;
+        }
+
+        body {
+            font-family: 'Noto Serif SC', serif;
+            background-color: var(--bg-black);
+            overflow-x: hidden;
+            margin: 0;
+            color: #fff;
+        }
+
+        .casino-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                url('https://images.unsplash.com/photo-1596838132731-dd93c882944c?auto=format&fit=crop&q=80&w=2070');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: -1;
+        }
+
+        .gold-border {
+            border: 2px solid var(--gold);
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3), inset 0 0 10px rgba(212, 175, 55, 0.2);
+            position: relative;
+        }
+
+        .gold-border::before {
+            content: '';
+            position: absolute;
+            top: -5px; left: -5px; right: -5px; bottom: -5px;
+            border: 1px solid var(--dark-gold);
+            pointer-events: none;
+        }
+
+        .neon-text {
+            color: #fff;
+            text-shadow: 0 0 5px #fff, 0 0 10px var(--gold), 0 0 20px var(--gold);
+            letter-spacing: 4px;
+        }
+
+        .input-field {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--dark-gold);
+            color: #fff;
+            transition: all 0.3s;
+        }
+
+        .input-field:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--gold);
+            outline: none;
+            box-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
+        }
+
+        .login-btn {
+            background: linear-gradient(135deg, #d4af37 0%, #996515 100%);
+            color: #000;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(212, 175, 55, 0.4);
+        }
+
+        .ai-btn {
+            border: 1px solid var(--gold);
+            background: rgba(212, 175, 55, 0.1);
+            color: var(--gold);
+            transition: all 0.3s;
+        }
+
+        .ai-btn:hover {
+            background: var(--gold);
+            color: #000;
+        }
+
+        .floating-icon {
+            position: absolute;
+            opacity: 0.15;
+            pointer-events: none;
+            animation: float 10s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh) rotate(0deg); }
+            100% { transform: translateY(-10vh) rotate(360deg); }
+        }
+
+        #toast {
+            visibility: hidden;
+            min-width: 280px;
+            background-color: var(--casino-red);
+            color: #fff;
+            text-align: center;
+            border-radius: 4px;
+            padding: 16px;
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            border: 1px solid var(--gold);
+        }
+
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid rgba(212, 175, 55, 0.3);
+            border-top: 2px solid var(--gold);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+    {% endif %}
+</head>
+
+{% if mode == 'game' %}
+<body>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
+
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Gouyun Poker</h1>
+        </div>
+        <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchTab('chat', event)">友好交流</button>
+            <button class="tab-btn" onclick="switchTab('rank', event)">狗运榜</button>
+        </div>
+
+        <div id="panel-chat" class="panel-content">
+            <div class="msg system-msg">— 欢迎来到 房间 {{ room }} —</div>
+            <div style="flex: 1;"></div>
+            <div class="chat-input-area">
+                <input type="text" class="chat-input" placeholder="发送消息..." onkeypress="handleChat(event)">
+            </div>
+        </div>
+
+        <div id="panel-rank" class="panel-content" style="display:none;">
+            <!-- Ranking will be loaded here -->
+        </div>
+    </div>
+
+    <div class="game-area">
+        <!-- 游戏信息栏 -->
+        <div class="game-info">
+            <div class="game-info-row">
+                <div class="game-info-item">
+                    <span class="game-info-label">盲注:</span>
+                    <span id="info-blinds" class="game-info-value">5/10</span>
+                </div>
+                <div class="game-info-item">
+                    <span class="game-info-label">房主:</span>
+                    <span id="room-owner-name" class="game-info-value">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 游戏日志 -->
+        <div id="game-status">
+            <p data-key="0"></p>
+            <p data-key="1"></p>
+            <p data-key="2"></p>
+            <p data-key="3"></p>
+            <p data-key="4"></p>
+        </div>
+
+        <!-- 牌桌 -->
+        <div class="table-wrapper">
+            <!-- 荷官图片 -->
+            <img src="/static/images/croupier.png" alt="Croupier" class="croupier-img">
+            <!-- 荷官倒计时 -->
+            <div id="dealer-countdown" class="dealer-countdown" style="display: none;">15</div>
+
+            <div class="poker-rail">
+                <div class="poker-racetrack">
+                    <div class="poker-felt">
+                        <div class="betting-line"></div>
+                        <div class="table-logo">♠ ♥ ♣ ♦</div>
+
+                        <!-- 底池显示 -->
+                        <div class="pot-area">
+                            <div class="pot-chips">
+                                <!-- Chips will be generated by JS -->
+                            </div>
+                            <div class="pot-display">
+                                <div class="pot-label">Main Pot</div>
+                                <div id="pot-amount" class="pot-amount">$0</div>
+                            </div>
+                        </div>
+
+                        <!-- 公共牌 -->
+                        <div class="community-cards" id="community-cards"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 座位容器 -->
+            <div id="seats-container"></div>
+        </div>
+
+        <!-- 底部UI容器 -->
+        <div class="bottom-ui-container">
+            <div id="my-hand-display" class="my-hand-display"></div>
+
+            <!-- 操作栏 -->
+            <div class="action-bar" id="bet-controls" style="display: none;">
+                <div id="fold-cmd-wrapper">
+                    <button class="action-btn btn-fold" id="fold-cmd" value="Fold">弃牌</button>
+                </div>
+                <div id="bet-input-wrapper" class="slider-area">
+                    <div class="slider-row">
+                        <button class="quick-bet-btn" id="decrease-bet-quick">-50</button>
+                        <button class="quick-bet-btn" id="decrease-bet">-10</button>
+                        <input type="text" id="bet-input" class="raise-amount" value="0">
+                        <button class="quick-bet-btn" id="increase-bet">+10</button>
+                        <button class="quick-bet-btn" id="increase-bet-quick">+50</button>
+                    </div>
+                    <div class="quick-bets">
+                        <button class="quick-bet-btn" id="half-pot-bet">1/2 Pot</button>
+                        <button class="quick-bet-btn" id="full-pot-bet">Pot</button>
+                        <button class="quick-bet-btn" id="allin-bet">All In</button>
+                    </div>
+                </div>
+                <div id="bet-cmd-wrapper">
+                    <button class="action-btn btn-raise" id="bet-cmd" value="Bet">下注</button>
+                </div>
+                <div id="no-bet-cmd-wrapper" style="display: none;">
+                    <button class="action-btn btn-check" id="no-bet-cmd">等待</button>
+                </div>
+            </div>
+
+            <!-- 玩家控制区 -->
+            <div class="player-controls" id="player-controls">
+                <div id="current-player" data-player-id="{{ player_id }}" data-allowed-to-bet="true">
+                    <div class="cards"></div>
+                </div>
+                <div class="control-buttons">
+                    <span id="status-indicator" class="status-indicator"></span>
+                    <input type="button" id="ready-btn" class="control-btn" value="Ready">
+                    <input type="button" id="last-10-hands-btn" class="control-btn owner-only" value="最后10把" style="display: none;">
+                    <input type="button" id="reset-scores-btn" class="control-btn owner-only" value="清空积分" style="display: none;">
+                    <span id="hand-countdown-display" class="countdown-display" style="display: none;"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/new_ui.js"></script>
+</body>
+
+{% else %}
+
+<body class="flex items-center justify-center min-h-screen">
+    <div class="casino-bg"></div>
+    <div id="deco-container"></div>
+
+    <div class="w-full max-w-md p-10 bg-black/75 backdrop-blur-lg gold-border rounded-lg mx-4 z-10 shadow-2xl">
+        <div class="text-center mb-10">
+            <h1 class="text-5xl font-bold neon-text mb-3">狗运牌</h1>
+            <p class="text-xs text-gray-400 uppercase tracking-widest italic">LUCKY DOG POKER CLUB</p>
+            <div class="w-32 h-px bg-gradient-to-r from-transparent via-[#d4af37] to-transparent mx-auto mt-4"></div>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="mb-4 p-3 bg-red-900/50 border border-red-500 text-red-200 rounded text-sm text-center">
+                    {% for message in messages %}
+                        <p>{{ message }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% if mode == 'login' %}
+        <form action="/login" method="post" class="space-y-5">
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">用户名</label>
+                <input type="text" name="email" placeholder="请输入您的用户名" required
+                    class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">密码</label>
+                <input type="password" name="password" placeholder="请输入您的密码" required
+                    class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+            </div>
+            <div class="flex items-center justify-between text-xs">
+                <label class="flex items-center cursor-pointer text-gray-400 hover:text-white transition">
+                    <input type="checkbox" class="mr-2 accent-[#d4af37]"> 记住我
+                </label>
+                <a href="#" class="text-[#d4af37] hover:underline">忘记密码?</a>
+            </div>
+            <button type="submit" class="login-btn w-full py-4 rounded text-xl shadow-lg mt-2">
+                立即开启狗运
+            </button>
+            <div class="text-center mt-4">
+                <a href="/register" class="text-[#d4af37] hover:underline text-sm">没有账号？去注册</a>
+            </div>
+        </form>
+
+        {% elif mode == 'register' %}
+        <form action="/register" method="post" class="space-y-5">
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">用户名</label>
+                <input type="text" name="email" placeholder="Your email" required
+                    class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">昵称</label>
+                <input type="text" name="username" placeholder="Your nick name" required
+                    class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">密码</label>
+                <input type="password" name="password" placeholder="Password" required
+                    class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">邀请码</label>
+                <input type="text" name="invite" placeholder="Invite Code" required
+                    class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+            </div>
+            <button type="submit" class="login-btn w-full py-4 rounded text-xl shadow-lg mt-2">
+                注册
+            </button>
+            <div class="text-center mt-4">
+                <a href="/login" class="text-[#d4af37] hover:underline text-sm">已有账号？去登录</a>
+            </div>
+        </form>
+
+        {% elif mode == 'join' %}
+        <form id="room-form" action="/join" method="post" class="space-y-5">
+            <div id="options" class="space-y-4">
+{#                <button type="button" onclick="chooseAction('create')" class="login-btn w-full py-4 rounded text-xl shadow-lg">#}
+{#                    创建新房间 (New Room)#}
+{#                </button>#}
+                <button type="button" onclick="chooseAction('join')" class="ai-btn w-full py-4 rounded text-xl shadow-lg">
+                    加入房间
+                </button>
+            </div>
+
+            <div id="join-room" style="display: none;" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">房间号</label>
+                    <input type="text" name="room-id" id="room-id" placeholder="Enter Room ID"
+                        class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
+                </div>
+                <button type="submit" class="login-btn w-full py-4 rounded text-xl shadow-lg">
+                    进入房间
+                </button>
+                <button type="button" onclick="showOptions()" class="text-gray-400 text-sm hover:text-white block text-center w-full">
+                    返回
+                </button>
+            </div>
+
+            <input type="hidden" name="action" id="action">
+        </form>
+        <script>
+            function chooseAction(action) {
+                document.getElementById("action").value = action;
+                if (action === "join") {
+                    document.getElementById("join-room").style.display = "block";
+                    document.getElementById("options").style.display = "none";
+                } else if (action === "create") {
+                    document.getElementById("room-form").submit();
+                }
+            }
+            function showOptions() {
+                document.getElementById("join-room").style.display = "none";
+                document.getElementById("options").style.display = "block";
+            }
+        </script>
+        {% endif %}
+
+        <!-- AI 运势功能 (Shared) -->
+        <div class="mt-6">
+            <button id="fortune-btn" onclick="fetchFortune()" class="ai-btn w-full py-2 rounded text-sm flex items-center justify-center gap-2">
+                <span>✨ 测今日狗运</span>
+                <div id="fortune-loader" class="hidden"><div class="spinner"></div></div>
+            </button>
+            <div id="fortune-display" class="mt-3 text-[13px] text-gray-300 italic text-center min-h-[1.5rem] leading-relaxed"></div>
+        </div>
+
+        <p class="mt-10 text-center text-[10px] text-gray-600 leading-relaxed">
+            抵制不良游戏 拒绝盗版游戏 注意自我保护 谨防受骗上当 <br>
+            适度游戏益脑 沉迷游戏伤身 合理安排时间 享受健康生活
+        </p>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        // DeepSeek API
+        // IMPORTANT:
+        // 1) Put your DeepSeek API key here (or inject it server-side), never commit real keys.
+        // 2) DeepSeek uses an OpenAI-compatible Chat Completions style endpoint.
+        const apiKey = "sk-98513b3806954d50a2eb8c04fe210a98";
+        const DEEPSEEK_MODEL = "deepseek-chat";
+        const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+
+        async function callDeepseek(prompt, systemInstruction = "") {
+            const url = `${DEEPSEEK_BASE_URL}/v1/chat/completions`;
+            const payload = {
+                model: DEEPSEEK_MODEL,
+                messages: [
+                    ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0.9
+            };
+
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text().catch(() => "");
+                        throw new Error(`API Error: ${response.status} ${errText}`);
+                    }
+
+                    const data = await response.json();
+                    return data.choices?.[0]?.message?.content?.trim() || "暂无回应";
+                } catch (error) {
+                    if (i === 4) throw error;
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
+        }
+
+        async function fetchFortune() {
+            const btn = document.getElementById('fortune-btn');
+            const loader = document.getElementById('fortune-loader');
+            const display = document.getElementById('fortune-display');
+
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+            display.innerText = "正在窥探天机...";
+
+            const systemPrompt = "你是一个在澳门赌场工作多年的资深荷官，说话风格奢华、神秘、老练。请根据当前的‘狗运牌’主题，为玩家生成一段简短的今日运势（50字以内）。";
+            const userPrompt = "请告诉我今天的运气如何，带一点博弈术语，比如‘红黑’、‘同花’、‘庄闲’等。";
+
+            try {
+                const result = await callDeepseek(userPrompt, systemPrompt);
+                display.innerText = result;
+            } catch (e) {
+                display.innerText = "信号干扰，运势迷雾笼罩...";
+                showToast("连接AI服务失败，请稍后再试");
+            } finally {
+                btn.disabled = false;
+                loader.classList.add('hidden');
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById("toast");
+            toast.innerText = message;
+            toast.className = "show";
+            setTimeout(() => toast.className = "", 3000);
+        }
+
+        function createDeco() {
+            const suits = ['♠', '♥', '♣', '♦'];
+            const container = document.getElementById('deco-container');
+            for (let i = 0; i < 8; i++) {
+                const span = document.createElement('div');
+                span.className = 'floating-icon text-3xl md:text-5xl';
+                span.innerText = suits[Math.floor(Math.random() * suits.length)];
+                span.style.left = Math.random() * 100 + 'vw';
+                span.style.animationDuration = (Math.random() * 5 + 10) + 's';
+                span.style.animationDelay = (Math.random() * 5) + 's';
+                if (span.innerText === '♥' || span.innerText === '♦') span.style.color = 'var(--casino-red)';
+                container.appendChild(span);
+            }
+        }
+
+        window.onload = createDeco;
+    </script>
+</body>
+{% endif %}
+</html>

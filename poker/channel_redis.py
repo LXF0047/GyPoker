@@ -6,7 +6,7 @@ from typing import Optional, Any
 import gevent
 from redis import exceptions, Redis
 
-from .channel import Channel, MessageFormatError, MessageTimeout, ChannelError
+from .channel import Channel, MessageFormatError, MessageTimeout, ChannelError, ChannelClosed
 
 
 class MessageQueue:
@@ -17,10 +17,14 @@ class MessageQueue:
         self._redis: Redis = redis
         self._queue_name: str = queue_name
         self._expire: int = expire  # 过期时间
+        self._active: bool = True
 
     @property
     def name(self):
         return self._queue_name
+
+    def close(self):
+        self._active = False
 
     def push(self, message: Any):
         msg_serialized = json.dumps(message)
@@ -33,6 +37,8 @@ class MessageQueue:
 
     def pop(self, timeout_epoch: Optional[float] = None) -> Any:
         while timeout_epoch is None or time.time() < timeout_epoch:
+            if not self._active:
+                raise ChannelClosed("Queue closed")
             try:
                 response = self._redis.rpop(self._queue_name)  # 从队列右端弹出消息
                 if response is not None:
@@ -73,3 +79,7 @@ class ChannelRedis(Channel):
     def recv_message(self, timeout_epoch: Optional[float] = None) -> Any:
         # 右出
         return self._queue_in.pop(timeout_epoch)
+
+    def close(self):
+        self._queue_in.close()
+        self._queue_out.close()

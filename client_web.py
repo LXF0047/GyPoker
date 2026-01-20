@@ -1,6 +1,7 @@
 import os
 import random
 import uuid
+import json
 
 import gevent
 import redis
@@ -8,12 +9,12 @@ from flask import Flask, render_template, redirect, session, url_for, request, f
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from poker.channel import ChannelError, MessageFormatError, MessageTimeout
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
 from poker.database import get_db_connection, get_ranking_list
-from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "!!_-pyp0k3r-_!!"
@@ -32,10 +33,7 @@ redis_url = os.environ["REDIS_URL"]
 redis = redis.from_url(redis_url)
 
 INVITE_CODE = "asd"
-
-
-# sudo lsof -ti:5000 | xargs sudo kill -9
-
+player_channels = {}
 
 class User(UserMixin):
     def __init__(self, id, username, password, email, money, loan):
@@ -49,7 +47,6 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    # 根据用户ID从数据库加载用户
     conn = get_db_connection()
     user_data = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
@@ -78,18 +75,16 @@ def register():
 
         if invite != INVITE_CODE:
             flash("Invalid invite code. Please try again.")
-            return redirect(url_for("register"))
+            return render_template("new_login.html", mode="register")
 
-        # 检查用户名是否已存在
         conn = get_db_connection()
         existing_user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
         if existing_user:
             conn.close()
             flash("Username already exists. Please choose another one.")
-            return redirect(url_for("register"))
+            return render_template("new_login.html", mode="register")
 
-        # 加密密码并存储到数据库
         hashed_password = generate_password_hash(password)
         conn.execute("INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
                      (username, hashed_password, email))
@@ -99,7 +94,7 @@ def register():
         flash("Registration successful! Please log in.")
         return redirect(url_for("login"))
 
-    return render_template("register.html")
+    return render_template("new_login.html", mode="register")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -108,7 +103,6 @@ def login():
         email = request.form["email"]
         password = request.form["password"]
 
-        # 从数据库获取用户信息
         conn = get_db_connection()
         user_data = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         conn.close()
@@ -120,15 +114,15 @@ def login():
             return redirect(url_for("join"))
 
         flash("Invalid username or password. Please try again.")
-        return redirect(url_for("login"))
+        return render_template("new_login.html", mode="login")
 
-    return render_template("login.html")
+    return render_template("new_login.html", mode="login")
 
 
 @app.route('/api/get-ranking', methods=['GET'])
 def get_ranking():
     ranking_data = get_ranking_list()
-    return jsonify(ranking_data)  # 返回 JSON 格式
+    return jsonify(ranking_data)
 
 
 @app.route("/join", methods=["GET", "POST"])
@@ -139,22 +133,21 @@ def join():
         if action == "join":
             room_id = request.form.get("room-id").strip()
             if not room_id:
-                return redirect(url_for("join"))
+                return render_template("new_login.html", mode="join")
 
-            # 玩家信息从数据库读取后保存在session中
             session["room-id"] = room_id
             session["player-id"] = current_user.id
             session["player-name"] = current_user.username
             session["player-money"] = current_user.money
             session['player-loan'] = current_user.loan
 
-            return render_template("index.html",
+            return render_template("new_ui.html",
+                                   mode="game",
                                    player_id=session["player-id"],
                                    username=session["player-name"],
                                    money=session["player-money"],
                                    loan=session['player-loan'],
-                                   room=session["room-id"],
-                                   template="game.html")
+                                   room=session["room-id"])
 
         elif action == "create":
             room_id = random.randint(1000, 9999)
@@ -164,29 +157,24 @@ def join():
             session["player-money"] = current_user.money
             session['player-loan'] = current_user.loan
 
-            return render_template("index.html",
+            return render_template("new_ui.html",
+                                   mode="game",
                                    player_id=session["player-id"],
                                    username=session["player-name"],
                                    money=session["player-money"],
                                    loan=session['player-loan'],
-                                   room=session["room-id"],
-                                   template="game.html")
+                                   room=session["room-id"])
 
         else:
             flash("What did you do???")
-            return redirect(url_for("join"))
+            return render_template("new_login.html", mode="join")
 
-    return render_template("join.html")
+    return render_template("new_login.html", mode="join")
 
 
 @socketio.on('connect')
 def on_connect():
     app.logger.info(f"Client connected: {request.sid}")
-
-
-import json
-
-player_channels = {}
 
 
 @socketio.on('disconnect')
@@ -207,15 +195,27 @@ def on_game_message(message):
     sid = request.sid
     if sid in player_channels:
         player_info = player_channels[sid]
-        if message.get('message_type') == 'chat_message':
+        message_type = message.get('message_type')
+        
+        if message_type == 'chat_message':
             room_id = player_info['room_id']
             chat_channel = f"room:{room_id}:chat"
             chat_message = {
+                'message_type': 'chat_message',
                 'sender_id': player_info['player_id'],
                 'sender_name': player_info['player_name'],
                 'message': message.get('message', '')
             }
             redis.publish(chat_channel, json.dumps(chat_message))
+        elif message_type == 'interaction':
+            room_id = player_info['room_id']
+            chat_channel = f"room:{room_id}:chat"
+            interaction_message = {
+                'message_type': 'interaction',
+                'sender_id': player_info['player_id'],
+                'action': message.get('action')
+            }
+            redis.publish(chat_channel, json.dumps(interaction_message))
         else:
             try:
                 player_info['channel'].send_message(message)
@@ -279,13 +279,12 @@ def poker_game(data, connection_channel: str):
         app.logger.info(f"Player {player_id} subscribed to chat channel: {chat_channel}")
         for message in pubsub.listen():
             if message['type'] == 'message':
-                chat_data = json.loads(message['data'])
-                socketio.emit('game_message', {
-                    'message_type': 'chat_message',
-                    'sender_id': chat_data['sender_id'],
-                    'sender_name': chat_data['sender_name'],
-                    'message': chat_data['message']
-                }, room=channel_to_ws)
+                data = json.loads(message['data'])
+                # Default to chat_message if not specified (for backward compatibility if any)
+                if 'message_type' not in data:
+                    data['message_type'] = 'chat_message'
+                
+                socketio.emit('game_message', data, room=channel_to_ws)
 
     game_loop = gevent.spawn(game_message_handler, server_channel, request.sid)
     chat_loop = gevent.spawn(chat_message_handler, room_id, request.sid)
@@ -298,4 +297,3 @@ def poker_game(data, connection_channel: str):
         'game_loop': game_loop,
         'chat_loop': chat_loop
     }
-

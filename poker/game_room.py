@@ -5,7 +5,7 @@ import gevent
 
 from .player_server import PlayerServer
 from .poker_game import GameSubscriber, GameError, GameFactory
-from .database import reset_players_in_db, INIT_MONEY
+from .database import reset_players_in_db, INIT_MONEY, update_player_in_db
 
 
 class FullGameRoomException(Exception):
@@ -179,6 +179,7 @@ class GameRoom(GameSubscriber):
         self.id = id
         self.private = private
         self.active = False
+        self.hand_in_progress = False  # 标记当前是否正在进行手牌
         self.owner: Optional[str] = None
         self.final_hands_countdown: int = 0
         self.is_final_countdown: bool = False
@@ -201,14 +202,18 @@ class GameRoom(GameSubscriber):
                 self._room_event_handler.room_event("player-added", player.id, self.owner)
             except DuplicateRoomPlayerException:
                 old_player = self._room_players.get_player(player.id)
-                # 记录重连前的数据
-                old_money = old_player.money
-                old_loan = old_player.loan
-                # 更新连接并同步数据库数据
+
+                # 强制从数据库同步数据，解决登录时显示金额不一致的问题
+                # 即使房间活跃或有手牌进行中，也优先使用数据库中的数据（通常是用户登录时读取的）
+                old_player._money = player.money
+                old_player._loan = player.loan
+                self._logger.info(f"Synced player {player.id} from DB: money={player.money}, loan={player.loan}")
+
+                # 更新连接通道
                 old_player.update_channel(player)
                 player = old_player
-                # 记录数据同步结果
-                self._logger.info(f"Player {player.id} reconnected. Money: {old_money} -> {player.money}, Loan: {old_loan} -> {player.loan}")
+                # 记录重连信息
+                self._logger.info(f"Player {player.id} reconnected. Current money: {player.money}, loan: {player.loan}")
                 self._room_event_handler.room_event("player-rejoined", player.id, self.owner)
 
             for event_message in self._event_messages:
@@ -232,6 +237,12 @@ class GameRoom(GameSubscriber):
         :param player_id: 离开的玩家ID
         """
         player = self._room_players.get_player(player_id)
+        # 玩家离开前保存筹码到数据库，防止数据丢失
+        try:
+            update_player_in_db(player.dto())
+            self._logger.info(f"Player {player_id} leaving, saved money: {player.money}, loan: {player.loan}")
+        except Exception as e:
+            self._logger.error(f"Failed to save player {player_id} data on leave: {e}")
         player.disconnect()
         self._room_players.remove_player(player.id)
 
@@ -284,9 +295,9 @@ class GameRoom(GameSubscriber):
         
         def ping_player_with_grace_period(player):
             if not player.ping():
-                # 给予1秒的宽限期，允许重连
+                # 给予3秒的宽限期，允许重连
                 self._logger.info(f"Player {player.id} ping failed, giving grace period for reconnection")
-                time.sleep(1)
+                time.sleep(3)
                 
                 # 再次检查玩家是否还在房间中（可能已重连）
                 try:
@@ -340,6 +351,8 @@ class GameRoom(GameSubscriber):
 
                     # 检查准备状态
                     if not self.all_players_ready():
+                        # 添加等待时间，避免频繁发送 ping 请求导致玩家被错误判定为掉线
+                        gevent.sleep(2)
                         continue
                     # 检查是否大于两个玩家
                     players = self._room_players.players
@@ -360,12 +373,17 @@ class GameRoom(GameSubscriber):
                             })
 
                     dealer_key = (dealer_key + 1) % len(players)  # 更新庄家位置
-                    game = self._game_factory.create_game(players)  # game是HoldemPokerGame()
-                    game.event_dispatcher.subscribe(self)  # 添加订阅者
-                    game.play_hand(players[dealer_key].id)  # 开始游戏
-                    game.save_player_data()  # 保存玩家数据
-                    game.update_ranking_list()  # 更新排行榜
-                    game.event_dispatcher.unsubscribe(self)  # 取消订阅
+                    
+                    try:
+                        self.hand_in_progress = True
+                        game = self._game_factory.create_game(players)  # game是HoldemPokerGame()
+                        game.event_dispatcher.subscribe(self)  # 添加订阅者
+                        game.play_hand(players[dealer_key].id)  # 开始游戏
+                        game.save_player_data()  # 保存玩家数据
+                        game.update_ranking_list()  # 更新排行榜
+                        game.event_dispatcher.unsubscribe(self)  # 取消订阅
+                    finally:
+                        self.hand_in_progress = False
 
                 except GameError:
                     break

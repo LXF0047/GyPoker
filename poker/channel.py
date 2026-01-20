@@ -5,6 +5,10 @@ class ChannelError(Exception):
     pass
 
 
+class ChannelClosed(ChannelError):
+    pass
+
+
 class MessageTimeout(Exception):
     pass
 
