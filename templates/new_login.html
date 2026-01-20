@@ -6,16 +6,16 @@
     <title>狗运牌</title>
 
     <!-- Shared Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+{#    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">#}
+{#    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">#}
 
     {% if mode == 'game' %}
     <!-- Game Mode Resources -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="/static/js/socket.io.js"></script>
     <link rel="stylesheet" href="/static/css/new_ui.css">
     <style>
         body {
-            background: url('/static/images/background.png') no-repeat center center fixed !important;
+            background: url('/static/images/background.webp') no-repeat center center fixed !important;
             background-size: cover !important;
         }
 
@@ -70,7 +70,7 @@
     </style>
     {% else %}
     <!-- Login/Register/Join Mode Resources -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/js/tailwindcss.js"></script>
     <style>
         :root {
             --gold: #d4af37;
@@ -309,7 +309,7 @@
         <!-- 牌桌 -->
         <div class="table-wrapper">
             <!-- 荷官图片 -->
-            <img src="/static/images/croupier.png" alt="Croupier" class="croupier-img">
+            <img src="/static/images/croupier.webp" alt="Croupier" class="croupier-img">
             <!-- 荷官倒计时 -->
             <div id="dealer-countdown" class="dealer-countdown" style="display: none;">15</div>
 

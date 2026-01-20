@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>狗运牌</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+{#    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">#}
+    <script src="/static/js/socket.io.js"></script>
     <link rel="stylesheet" href="/static/css/new_ui.css">
     <style>
         body {
-            background: url('/static/images/background.png') no-repeat center center fixed !important;
+            background: url('/static/images/background.webp') no-repeat center center fixed !important;
             background-size: cover !important;
         }
 
@@ -129,7 +129,7 @@
         <!-- 牌桌 -->
         <div class="table-wrapper">
             <!-- 荷官图片 -->
-            <img src="/static/images/croupier.png" alt="Croupier" class="croupier-img">
+            <img src="/static/images/croupier.webp" alt="Croupier" class="croupier-img">
             <!-- 荷官倒计时 -->
             <div id="dealer-countdown" class="dealer-countdown" style="display: none;">15</div>
 
