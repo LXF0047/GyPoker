@@ -153,7 +153,7 @@ def get_fortune():
             *([{"role": "system", "content": system_prompt}] if system_prompt else []),
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.9
+        "temperature": 0.6
     }
 
     try:
