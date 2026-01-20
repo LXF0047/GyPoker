@@ -730,6 +730,58 @@ def add_avatar_column():
         cursor.close()
         conn.close()
 
+def create_api_keys_table():
+    """创建 API Keys 表"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_name TEXT NOT NULL UNIQUE,
+                api_key TEXT NOT NULL,
+                created_at DATE DEFAULT (date('now', 'localtime'))
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"Error creating api_keys table: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_api_key(service_name):
+    """获取指定服务的 API Key"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT api_key FROM api_keys WHERE service_name = ?", (service_name,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+    except Exception as e:
+        print(f"Error getting api key for {service_name}: {e}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
+
+def set_api_key(service_name, api_key):
+    """设置或更新指定服务的 API Key"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO api_keys (service_name, api_key) 
+            VALUES (?, ?)
+            ON CONFLICT(service_name) DO UPDATE SET api_key = excluded.api_key
+        """, (service_name, api_key))
+        conn.commit()
+    except Exception as e:
+        print(f"Error setting api key for {service_name}: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
 if __name__ == '__main__':
     ''''''
     # 删除表
@@ -759,3 +811,8 @@ if __name__ == '__main__':
     
     # 添加头像字段
     # add_avatar_column()
+    
+    # 创建 API Keys 表
+    create_api_keys_table()
+    # 设置 DeepSeek API Key
+    set_api_key('deepseek', 'sk-98513b3806954d50a2eb8c04fe210a98')

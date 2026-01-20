@@ -2,6 +2,7 @@ import os
 import random
 import uuid
 import json
+import requests
 
 import gevent
 import redis
@@ -14,7 +15,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from poker.channel import ChannelError, MessageFormatError, MessageTimeout
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
-from poker.database import get_db_connection, get_ranking_list
+from poker.database import get_db_connection, get_ranking_list, get_api_key
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "!!_-pyp0k3r-_!!"
@@ -34,6 +35,10 @@ redis = redis.from_url(redis_url)
 
 INVITE_CODE = "asd"
 player_channels = {}
+
+# DeepSeek API Configuration
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_MODEL = "deepseek-chat"
 
 class User(UserMixin):
     def __init__(self, id, username, password, email, money, loan, avatar=None):
@@ -128,6 +133,41 @@ def login():
 def get_ranking():
     ranking_data = get_ranking_list()
     return jsonify(ranking_data)
+
+
+@app.route('/api/fortune', methods=['POST'])
+def get_fortune():
+    data = request.get_json()
+    user_prompt = data.get('prompt', '')
+    system_prompt = data.get('system', '')
+
+    api_key = get_api_key('deepseek')
+    if not api_key:
+        app.logger.error("DeepSeek API Key not found in database")
+        return jsonify({"error": "API Key not configured"}), 500
+
+    url = f"{DEEPSEEK_BASE_URL}/v1/chat/completions"
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            *([{"role": "system", "content": system_prompt}] if system_prompt else []),
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.9
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        })
+        response.raise_for_status()
+        result = response.json()
+        content = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
+        return jsonify({"content": content})
+    except Exception as e:
+        app.logger.error(f"DeepSeek API Error: {e}")
+        return jsonify({"error": "Failed to fetch fortune"}), 500
 
 
 @app.route("/join", methods=["GET", "POST"])

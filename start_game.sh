@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A robust launcher for the pypoker services (backend service + web client)
-# Features: pid files, retries, health checks, log rotation, port checks, start/stop/restart/status/tail
+# Features: pid files, retries, log rotation, port checks, start/stop/restart/status/tail
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -25,12 +25,6 @@ GUNICORN_WORKERS="1"                  # gevent-based, typically 1 worker with ma
 # Process entrypoints
 SERVICE_ENTRY="${APP_HOME}/texasholdem_poker_service.py"
 WEB_MODULE="client_web:app"
-
-# Health check (optional). Leave empty to skip.
-HEALTHCHECK_URL="http://${HOST}:${PORT}/health"
-HEALTHCHECK_TIMEOUT=3
-HEALTHCHECK_RETRIES=10
-SLEEP_BETWEEN_RETRIES=2
 
 # Logs & PIDs
 LOG_DIR="${APP_HOME}/logs"
@@ -120,24 +114,6 @@ activate_venv_if_set() {
   fi
 }
 
-run_healthcheck() {
-  [[ -n "$HEALTHCHECK_URL" ]] || return 0
-  if ! command -v curl >/dev/null 2>&1; then
-    warn "curl not found; skipping healthcheck"
-    return 0
-  fi
-  for i in $(seq 1 "$HEALTHCHECK_RETRIES"); do
-    if curl -fsS --max-time "$HEALTHCHECK_TIMEOUT" "$HEALTHCHECK_URL" >/dev/null 2>&1; then
-      log "Healthcheck OK: $HEALTHCHECK_URL"
-      return 0
-    fi
-    log "Waiting for healthcheck ($i/$HEALTHCHECK_RETRIES)..."
-    sleep "$SLEEP_BETWEEN_RETRIES"
-  done
-  warn "Healthcheck failed after ${HEALTHCHECK_RETRIES} attempts: $HEALTHCHECK_URL"
-  return 1
-}
-
 #################################
 # Actions                       #
 #################################
@@ -186,7 +162,6 @@ start_web() {
 start_all() {
   start_service
   start_web
-  run_healthcheck || true
 }
 
 stop_service() { kill_pidfile "$SERVICE_PID"; log "Service stopped"; }
@@ -224,7 +199,7 @@ Usage: $0 {start|stop|restart|status|tail|start-service|start-web|stop-service|s
 
 Environment variables you can override:
   APP_HOME, PYTHON_BIN, VENV_ACTIVATE, HOST, PORT, GUNICORN_BIN, GUNICORN_WORKER,
-  GUNICORN_TIMEOUT, GUNICORN_WORKERS, SERVICE_ENTRY, WEB_MODULE, HEALTHCHECK_URL,
+  GUNICORN_TIMEOUT, GUNICORN_WORKERS, SERVICE_ENTRY, WEB_MODULE,
   LOG_DIR, PID_DIR, MAX_LOG_SIZE
 USAGE
 }
