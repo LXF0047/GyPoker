@@ -36,13 +36,14 @@ INVITE_CODE = "asd"
 player_channels = {}
 
 class User(UserMixin):
-    def __init__(self, id, username, password, email, money, loan):
+    def __init__(self, id, username, password, email, money, loan, avatar=None):
         self.id = id
         self.username = username
         self.password = password
         self.email = email
         self.money = money
         self.loan = loan
+        self.avatar = avatar
 
 
 @login_manager.user_loader
@@ -51,8 +52,10 @@ def load_user(user_id):
     user_data = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
     if user_data:
+        # 检查 avatar 列是否存在，如果不存在则为 None
+        avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
         return User(user_data["id"], user_data["username"], user_data["password"],
-                    user_data["email"], user_data["money"], user_data["loan"])
+                    user_data["email"], user_data["money"], user_data["loan"], avatar)
     return None
 
 
@@ -72,6 +75,7 @@ def register():
         password = request.form["password"]
         email = request.form["email"]
         invite = request.form["invite"]
+        avatar = request.form.get("avatar") # 获取头像
 
         if invite != INVITE_CODE:
             flash("Invalid invite code. Please try again.")
@@ -86,8 +90,8 @@ def register():
             return render_template("new_login.html", mode="register")
 
         hashed_password = generate_password_hash(password)
-        conn.execute("INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
-                     (username, hashed_password, email))
+        conn.execute("INSERT INTO users (username, password, email, avatar) VALUES (?, ?, ?, ?)",
+                     (username, hashed_password, email, avatar))
         conn.commit()
         conn.close()
 
@@ -108,8 +112,9 @@ def login():
         conn.close()
 
         if user_data and check_password_hash(user_data["password"], password):
+            avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
             user = User(user_data["id"], user_data["username"], user_data["password"],
-                        user_data["email"], user_data["money"], user_data["loan"])
+                        user_data["email"], user_data["money"], user_data["loan"], avatar)
             login_user(user)
             return redirect(url_for("join"))
 
@@ -140,6 +145,7 @@ def join():
             session["player-name"] = current_user.username
             session["player-money"] = current_user.money
             session['player-loan'] = current_user.loan
+            # session['player-avatar'] = current_user.avatar
 
             return render_template("new_ui.html",
                                    mode="game",
@@ -147,6 +153,7 @@ def join():
                                    username=session["player-name"],
                                    money=session["player-money"],
                                    loan=session['player-loan'],
+                                   avatar=current_user.avatar,
                                    room=session["room-id"])
 
         elif action == "create":
@@ -156,6 +163,7 @@ def join():
             session["player-name"] = current_user.username
             session["player-money"] = current_user.money
             session['player-loan'] = current_user.loan
+            # session['player-avatar'] = current_user.avatar
 
             return render_template("new_ui.html",
                                    mode="game",
@@ -163,6 +171,7 @@ def join():
                                    username=session["player-name"],
                                    money=session["player-money"],
                                    loan=session['player-loan'],
+                                   avatar=current_user.avatar,
                                    room=session["room-id"])
 
         else:
@@ -239,6 +248,21 @@ def poker_game(data, connection_channel: str):
     player_name = session["player-name"]
     player_money = session["player-money"]
     player_loan = session["player-loan"]
+    
+    player_avatar = None
+    if current_user.is_authenticated:
+        player_avatar = current_user.avatar
+    else:
+        conn = get_db_connection()
+        user_data = conn.execute("SELECT avatar FROM users WHERE id = ?", (player_id,)).fetchone()
+        conn.close()
+        if user_data:
+            player_avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
+
+    # 如果头像数据过大，截断或置空
+    if player_avatar and len(player_avatar) > 50000:
+        player_avatar = None
+
     room_id = session["room-id"]
 
     player_connector = PlayerClientConnector(redis, connection_channel, app.logger)
@@ -250,6 +274,7 @@ def poker_game(data, connection_channel: str):
                 name=player_name,
                 money=player_money,
                 loan=player_loan,
+                avatar=player_avatar,
                 ready=False,
             ),
             session_id=session_id,

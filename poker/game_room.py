@@ -207,7 +207,8 @@ class GameRoom(GameSubscriber):
                 # 即使房间活跃或有手牌进行中，也优先使用数据库中的数据（通常是用户登录时读取的）
                 old_player._money = player.money
                 old_player._loan = player.loan
-                self._logger.info(f"Synced player {player.id} from DB: money={player.money}, loan={player.loan}")
+                old_player._avatar = player.avatar
+                self._logger.info(f"Synced player {player.id} from DB: money={player.money}, loan={player.loan}, avatar={player.avatar}")
 
                 # 更新连接通道
                 old_player.update_channel(player)

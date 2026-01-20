@@ -205,6 +205,53 @@
             vertical-align: middle;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 头像上传样式 */
+        .avatar-upload {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 20px;
+            cursor: pointer;
+        }
+        .avatar-preview {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid var(--gold);
+            background-size: cover;
+            background-position: center;
+            background-image: url('/static/images/icon.jpg');
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.3);
+            transition: all 0.3s;
+        }
+        .avatar-upload:hover .avatar-preview {
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.6);
+            filter: brightness(1.1);
+        }
+        .avatar-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 1; /* 默认显示 */
+            transition: opacity 0.3s;
+        }
+        .avatar-overlay span {
+            color: #fff;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        #avatar-input {
+            display: none;
+        }
     </style>
     {% endif %}
 </head>
@@ -395,19 +442,29 @@
 
         {% elif mode == 'register' %}
         <form action="/register" method="post" class="space-y-5">
+            <!-- 头像上传区域 -->
+            <div class="avatar-upload" onclick="document.getElementById('avatar-input').click()">
+                <div class="avatar-preview" id="avatar-preview"></div>
+                <div class="avatar-overlay" id="avatar-overlay">
+                    <span>更换头像</span>
+                </div>
+                <input type="file" id="avatar-input" accept="image/*" onchange="handleAvatarUpload(this)">
+                <input type="hidden" name="avatar" id="avatar-data">
+            </div>
+
             <div>
                 <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">用户名</label>
-                <input type="text" name="email" placeholder="Your email" required
+                <input type="text" name="email" placeholder="登录用户名" required
                     class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
             </div>
             <div>
                 <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">昵称</label>
-                <input type="text" name="username" placeholder="Your nick name" required
+                <input type="text" name="username" placeholder="游戏中昵称" required
                     class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
             </div>
             <div>
                 <label class="block text-xs font-semibold text-gray-400 uppercase mb-2 ml-1">密码</label>
-                <input type="password" name="password" placeholder="Password" required
+                <input type="password" name="password" placeholder="别忘了" required
                     class="input-field w-full px-4 py-3 rounded text-sm placeholder:text-gray-600">
             </div>
             <div>
@@ -422,6 +479,76 @@
                 <a href="/login" class="text-[#d4af37] hover:underline text-sm">已有账号？去登录</a>
             </div>
         </form>
+
+        <script>
+            function handleAvatarUpload(input) {
+                if (input.files && input.files[0]) {
+                    const file = input.files[0];
+
+                    // 检查文件大小 (限制为 500KB)
+                    if (file.size > 500 * 1024) {
+                        showToast("图片大小不能超过 500KB");
+                        input.value = '';
+                        return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        // 创建图片对象以进行压缩
+                        const img = new Image();
+                        img.src = e.target.result;
+
+                        img.onload = function() {
+                            // 创建 canvas 进行压缩
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+
+                            // 设置最大尺寸
+                            const MAX_WIDTH = 100;
+                            const MAX_HEIGHT = 100;
+                            let width = img.width;
+                            let height = img.height;
+
+                            if (width > height) {
+                                if (width > MAX_WIDTH) {
+                                    height *= MAX_WIDTH / width;
+                                    width = MAX_WIDTH;
+                                }
+                            } else {
+                                if (height > MAX_HEIGHT) {
+                                    width *= MAX_HEIGHT / height;
+                                    height = MAX_HEIGHT;
+                                }
+                            }
+
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            // 转换为 base64
+                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.5);
+
+                            // 更新预览和隐藏域
+                            document.getElementById('avatar-preview').style.backgroundImage = `url(${compressedDataUrl})`;
+                            document.getElementById('avatar-data').value = compressedDataUrl;
+
+                            // 上传成功后隐藏遮罩层，让用户看到新头像
+                            document.getElementById('avatar-overlay').style.opacity = '0';
+
+                            // 鼠标悬停时再次显示遮罩层
+                            const uploadDiv = document.querySelector('.avatar-upload');
+                            uploadDiv.onmouseenter = function() {
+                                document.getElementById('avatar-overlay').style.opacity = '1';
+                            };
+                            uploadDiv.onmouseleave = function() {
+                                document.getElementById('avatar-overlay').style.opacity = '0';
+                            };
+                        };
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+        </script>
 
         {% elif mode == 'join' %}
         <form id="room-form" action="/join" method="post" class="space-y-5">

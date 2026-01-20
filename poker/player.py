@@ -1,12 +1,13 @@
 from .database import INIT_MONEY, query_player_msg_in_db
 
 class Player:
-    def __init__(self, id: str, name: str, money: float, loan: int, ready: bool):
+    def __init__(self, id: str, name: str, money: float, loan: int, ready: bool, avatar: str = None):
         self._id: str = id
         self._name: str = name
         self._money: float = money
         self._loan: int = loan
         self._ready: bool = ready
+        self._avatar: str = avatar
 
     @property
     def id(self) -> str:
@@ -28,12 +29,17 @@ class Player:
     def ready(self) -> bool:
         return self._ready
 
+    @property
+    def avatar(self) -> str:
+        return self._avatar
+
     def dto(self):
         return {
             "id": self.id,
             "name": self.name,
             "money": self.money,
             "loan": self.loan,
+            "avatar": self.avatar,
         }
 
     def take_money(self, money: float):
@@ -66,11 +72,14 @@ class Player:
         try:
             latest_money = query_player_msg_in_db(self._name, 'money')
             latest_loan = query_player_msg_in_db(self._name, 'loan')
+            latest_avatar = query_player_msg_in_db(self._name, 'avatar')
             
             if latest_money is not None:
                 self._money = float(latest_money)
             if latest_loan is not None:
                 self._loan = int(latest_loan)
+            if latest_avatar is not None:
+                self._avatar = str(latest_avatar)
         except Exception as e:
             print(f"Error syncing player {self._name} data from database: {e}")
 

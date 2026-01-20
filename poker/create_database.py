@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users
     password TEXT        NOT NULL,
     money    INTEGER DEFAULT 3000,
     loan INTEGER DEFAULT 0,
-    hands integer default 0
+    hands integer default 0,
+    avatar TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS daily (

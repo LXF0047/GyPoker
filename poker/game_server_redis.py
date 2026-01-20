@@ -75,6 +75,15 @@ class GameServerRedis(GameServer):
         except ValueError:
             raise MessageFormatError(attribute="player.loan",
                                      desc="'{}' is not a valid integer".format(message["player"]["loan"]))
+        # player avatar
+        try:
+            player_avatar = message["player"].get("avatar")
+            # 如果头像数据过大，截断或置空 (50KB limit)
+            if player_avatar and len(player_avatar) > 50000:
+                player_avatar = None
+        except KeyError:
+            player_avatar = None
+
         # room id
         try:
             game_room_id = str(message["room_id"])
@@ -94,6 +103,7 @@ class GameServerRedis(GameServer):
             name=player_name,
             money=player_money,
             loan=player_loan,
+            avatar=player_avatar,
             ready=False
         )
 

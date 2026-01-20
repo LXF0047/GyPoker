@@ -7,7 +7,8 @@
 import sqlite3
 
 # DATABASE_PATH = "/home/pypoker/user.db"
-DATABASE_PATH = "database/user.db"
+# DATABASE_PATH = "database/user.db"
+DATABASE_PATH = "/Users/f/Documents/project/pypoker/database/user.db"
 INIT_MONEY = 3000
 
 
@@ -703,7 +704,34 @@ def start_daily_settlement_scheduler():
     print("每日结算调度器已启动")  # 保留print用于启动确认
 
 
+def add_avatar_column():
+    """
+    为 users 表添加 avatar 字段
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # 检查 avatar 列是否存在
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        if 'avatar' not in columns:
+            print("Adding 'avatar' column to users table...")
+            cursor.execute("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT NULL")
+            conn.commit()
+            print("'avatar' column added successfully.")
+        else:
+            print("'avatar' column already exists.")
+            
+    except Exception as e:
+        print(f"Error adding avatar column: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
 if __name__ == '__main__':
+    ''''''
     # 删除表
     # drop_tabel('daily')
     # 新建daily表
@@ -712,9 +740,9 @@ if __name__ == '__main__':
     # reset_player_in_db()
     # reset_daily_table()
     # 查询当前所有数据
-    query_all_data('users')
-    print('=' * 50)
-    query_all_data('daily')
+    # query_all_data('users')
+    # print('=' * 50)
+    # query_all_data('daily')
     # 查询当前排名
     # res = query_ranking_in_db()
     # print(res)
@@ -728,3 +756,6 @@ if __name__ == '__main__':
     # 更新玩家数据
     # update_player_msg_in_db('taozhen', 'money', 3000)
     # reset_daily_table()
+    
+    # 添加头像字段
+    # add_avatar_column()

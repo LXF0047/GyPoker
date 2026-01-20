@@ -316,6 +316,17 @@ const PyPoker = {
                 if (balance) balance.textContent = '$' + parseInt(player.money);
                 const name = seat.querySelector('.player-name');
                 if (name && player.name) name.textContent = player.name;
+                
+                // 更新头像
+                if (player.avatar) {
+                    const avatar = seat.querySelector('.avatar');
+                    if (avatar) {
+                        avatar.style.backgroundImage = `url('${player.avatar}')`;
+                        avatar.style.backgroundSize = 'cover';
+                        avatar.style.backgroundPosition = 'center';
+                        avatar.textContent = ''; // 清除文字
+                    }
+                }
             }
         },
 
@@ -787,7 +798,7 @@ const PyPoker = {
 
                     seatDiv.innerHTML = `
                         <div class="avatar-container">
-                            <div class="avatar">${player.name.charAt(0).toUpperCase()}</div>
+                            <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
                         </div>
                         <div class="player-info">
                             <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
@@ -864,7 +875,7 @@ const PyPoker = {
                                 
                                 seat.innerHTML = `
                                     <div class="avatar-container">
-                                        <div class="avatar">${player.name.charAt(0).toUpperCase()}</div>
+                                        <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
                                     </div>
                                     <div class="player-info">
                                         <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
@@ -878,6 +889,17 @@ const PyPoker = {
                                 if (balance) balance.textContent = '$' + parseInt(player.money);
                                 const name = seat.querySelector('.player-name');
                                 if (name) name.textContent = isCurrentPlayer ? 'You' : player.name;
+                                
+                                // 更新头像
+                                if (player.avatar) {
+                                    const avatar = seat.querySelector('.avatar');
+                                    if (avatar) {
+                                        avatar.style.backgroundImage = `url('${player.avatar}')`;
+                                        avatar.style.backgroundSize = 'cover';
+                                        avatar.style.backgroundPosition = 'center';
+                                        avatar.textContent = ''; // 清除文字
+                                    }
+                                }
                             }
                         } else {
                             // Seat should be empty
