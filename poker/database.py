@@ -5,6 +5,10 @@
 # @File : database.py
 # @desc : 
 import sqlite3
+import threading
+import time
+import logging
+from datetime import timedelta, datetime, time as dt_time
 
 # DATABASE_PATH = "/home/pypoker/user.db"
 DATABASE_PATH = "database/user.db"
@@ -69,7 +73,7 @@ def query_ranking_in_db(player_names=None):
 
 def get_ranking_list():
     """
-    获取新的排行榜数据
+    获取新的排行榜数据，数据包括历史数据也包括当日数据，是显示在狗运榜的数据内容
     返回格式: (排名, 玩家姓名, 总积分, bb/100 hands, 当日总积分, 当日净胜分)
     按当日净胜分排序
     """
@@ -132,7 +136,9 @@ def query_player_msg_in_db(db_name, player_name, column_name):
 
 
 def update_total_score_daily(username, daily_profit, game_type=1):
-    """每日结算时更新玩家总积分（不增加游戏局数）"""
+    """
+    每日结算时更新玩家总积分（不增加游戏局数）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -410,10 +416,6 @@ def reset_daily_table_for_new_day():
 
 def start_daily_settlement_scheduler():
     """启动每日结算的定时调度器"""
-    import threading
-    import time
-    import logging
-    from datetime import datetime, time as dt_time
     
     logger = logging.getLogger(__name__)
     
@@ -432,7 +434,6 @@ def start_daily_settlement_scheduler():
                     target_datetime = now.replace(hour=1, minute=0, second=0, microsecond=0)
                 else:
                     # 今天的凌晨1点已过，等待明天的凌晨1点
-                    from datetime import timedelta
                     target_datetime = (now + timedelta(days=1)).replace(hour=1, minute=0, second=0, microsecond=0)
                 
                 # 计算等待时间
