@@ -5,7 +5,7 @@ import gevent
 
 from .player_server import PlayerServer
 from .poker_game import GameSubscriber, GameError, GameFactory
-from .database import reset_players_in_db, INIT_MONEY, update_player_in_db
+from .database import update_player_in_db
 
 
 class FullGameRoomException(Exception):
