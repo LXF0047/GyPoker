@@ -67,12 +67,12 @@ class Player:
 
     def sync_from_database(self):
         """
-        从数据库同步最新的金额和贷款数据
+        从daily中同步最新数据
         """
         try:
-            latest_money = query_player_msg_in_db(self._name, 'money')
-            latest_loan = query_player_msg_in_db(self._name, 'loan')
-            latest_avatar = query_player_msg_in_db(self._name, 'avatar')
+            latest_money = query_player_msg_in_db('daily', self._name, 'money')
+            latest_loan = query_player_msg_in_db('users', self._name, 'loan')
+            latest_avatar = query_player_msg_in_db('users', self._name, 'avatar')
             
             if latest_money is not None:
                 self._money = float(latest_money)

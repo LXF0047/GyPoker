@@ -9,28 +9,13 @@ import sqlite3
 # DATABASE_PATH = "/home/pypoker/user.db"
 DATABASE_PATH = "database/user.db"
 INIT_MONEY = 3000
+BIG_BLIND = 10  # 大盲值
 
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def drop_tabel(table_name):
-    # 删除daily表
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(f"""
-            DROP TABLE {table_name}
-        """)
-        conn.commit()
-    except Exception as e:
-        print(f"Error dropping daily table in database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
 
 
 def update_player_in_db(player_data):
@@ -58,85 +43,10 @@ def update_player_in_db(player_data):
         conn.close()
 
 
-def reset_player_in_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        # 将所有数据重置为默认值
-        cursor.execute("""
-            UPDATE users
-            SET money = ?,
-                loan = 0,
-                hands = 0
-        """, (INIT_MONEY,))
-        conn.commit()
-    except Exception as e:
-        print(f"Error reset player data in database: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def reset_players_in_db(player_ids):
-    """
-    重置指定玩家列表的积分
-    :param player_ids: 玩家ID列表
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        placeholders = ', '.join('?' for _ in player_ids)
-        sql = f"UPDATE users SET money = ?, loan = 0, hands = 0 WHERE id IN ({placeholders})"
-        
-        # The first argument is INIT_MONEY, followed by the player IDs
-        params = [INIT_MONEY] + player_ids
-        cursor.execute(sql, params)
-        conn.commit()
-    except Exception as e:
-        print(f"Error resetting specific players data in database: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def query_all_data(table):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(f"SELECT * FROM {table}")
-        rows = cursor.fetchall()
-
-        if not rows:
-            print("No data found.")
-            return
-
-        # 获取列名并排除指定列
-        excluded_columns = {"password"}  # 要排除的列
-        column_names = [col for col in rows[0].keys() if col not in excluded_columns]
-
-        # 构建 Markdown 表格
-        header = "| " + " | ".join(column_names) + " |"
-        separator = "| " + " | ".join(["---"] * len(column_names)) + " |"
-        rows_data = [
-            "| " + " | ".join([str(row[col]) for col in column_names]) + " |"
-            for row in rows
-        ]
-
-        # 打印 Markdown 表格
-        markdown_table = "\n".join([header, separator] + rows_data)
-        print(markdown_table)
-    except Exception as e:
-        print(f"Error querying data from database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
 def query_ranking_in_db(player_names=None):
+    """
+    查询users表中多名玩家的排名数据
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -173,7 +83,6 @@ def get_ranking_list():
     total_scores_dict = {row[0]: {'total_score': row[1], 'game_count': row[2]} for row in total_scores_data}
 
     ranking_data = []
-    BIG_BLIND = 10  # 大盲值
     
     for player_name, daily_profit in daily_ranking.items():
         if player_name.startswith('admin'):
@@ -204,115 +113,19 @@ def get_ranking_list():
     return final_ranking
 
 
-
-def delete_player_in_db(player_name):
+def query_player_msg_in_db(db_name, player_name, column_name):
+    """
+    在表中查询玩家信息
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM users WHERE username=?", (player_name,))
-        conn.commit()
-    except Exception as e:
-        print(f"Error deleting player from database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def rename_player_in_db(old_name, new_name):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("UPDATE users SET username=? WHERE username=?", (new_name, old_name))
-        conn.commit()
-    except Exception as e:
-        print(f"Error renaming player in database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def change_email_in_db(old_email, new_email):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("UPDATE users SET email=? WHERE email=?", (new_email, old_email))
-        conn.commit()
-    except Exception as e:
-        print(f"Error update email in database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def query_player_msg_in_db(player_name, column_name):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(f"SELECT {column_name} FROM users WHERE username=?", (player_name,))
+        cursor.execute(f"SELECT {column_name} FROM {db_name} WHERE username=?", (player_name,))
         result = cursor.fetchone()
         if result is not None:
             return result[0]
     except Exception as e:
         print(f"Error querying player data from database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def update_player_msg_in_db(player_name, column_name, value):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute(f"UPDATE users SET {column_name}=? WHERE username=?", (value, player_name))
-        conn.commit()
-    except Exception as e:
-        print(f"Error updating player data in database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def create_daily_table():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS daily (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                start_money FLOAT DEFAULT ?,
-                latest_money FLOAT DEFAULT ?,
-                "date" DATE DEFAULT (date('now', 'localtime'))
-            )
-        """, (INIT_MONEY, INIT_MONEY))
-        conn.commit()
-    except Exception as e:
-        print(f"Error creating table in database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def create_total_scores_table():
-    """创建总积分历史记录表，支持多种游戏类型"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS total_scores (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                game_type INTEGER DEFAULT 1,
-                total_score FLOAT DEFAULT 0,
-                game_count INTEGER DEFAULT 0,
-                created_date DATE DEFAULT (date('now', 'localtime')),
-                updated_date DATE DEFAULT (date('now', 'localtime')),
-                UNIQUE(username, game_type)
-            )
-        """)
-        conn.commit()
-    except Exception as e:
-        print(f"Error creating total_scores table: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -389,25 +202,6 @@ def update_game_count(username, game_type=1):
         conn.close()
 
 
-def get_total_score(username, game_type=1):
-    """获取玩家总积分"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            SELECT total_score FROM total_scores 
-            WHERE username = ? AND game_type = ?
-        """, (username, game_type))
-        result = cursor.fetchone()
-        return result[0] if result else 0
-    except Exception as e:
-        print(f"Error getting total score: {e}")
-        return 0
-    finally:
-        cursor.close()
-        conn.close()
-
-
 def get_all_total_scores(game_type=1):
     """获取所有玩家的总积分数据"""
     conn = get_db_connection()
@@ -428,6 +222,9 @@ def get_all_total_scores(game_type=1):
 
 
 def update_daily_table(username, money):
+    """
+    更新每日游戏表
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -539,6 +336,10 @@ def query_latest_hand(username):
 
 
 def get_daily_ranking():
+    """
+    在daily表中获取当日的所有玩家对局数据
+    并返回每个玩家的当日净胜分（k-v）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -557,39 +358,6 @@ def get_daily_ranking():
         return ranking_data
     except Exception as e:
         print(f"Error querying daily table in database: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def reset_daily_table():
-    # 清空daily表中所有数据
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # 查询user表中所有username
-    usernames = []
-    try:
-        cursor.execute("""
-            SELECT username FROM users
-        """
-        )
-        result = cursor.fetchall()
-        for row in result:
-            usernames.append(row[0])
-        # 清空 daily 表中所有数据
-        cursor.execute("DELETE FROM daily")
-        # 重置自增序列
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name='daily'")
-        insert_data = [(username, INIT_MONEY, INIT_MONEY, '2024-01-01') for username in usernames]
-        cursor.executemany("""
-            INSERT INTO daily (username, start_money, latest_money, date)
-            VALUES (?, ?, ?, ?)
-        """, insert_data)
-
-        conn.commit()
-        print("已成功重置 daily 表。")
-    except Exception as e:
-        print(f"Error deleting from daily table in database: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -703,52 +471,6 @@ def start_daily_settlement_scheduler():
     print("每日结算调度器已启动")  # 保留print用于启动确认
 
 
-def add_avatar_column():
-    """
-    为 users 表添加 avatar 字段
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        # 检查 avatar 列是否存在
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [column[1] for column in cursor.fetchall()]
-        
-        if 'avatar' not in columns:
-            print("Adding 'avatar' column to users table...")
-            cursor.execute("ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT NULL")
-            conn.commit()
-            print("'avatar' column added successfully.")
-        else:
-            print("'avatar' column already exists.")
-            
-    except Exception as e:
-        print(f"Error adding avatar column: {e}")
-        conn.rollback()
-    finally:
-        cursor.close()
-        conn.close()
-
-def create_api_keys_table():
-    """创建 API Keys 表"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                service_name TEXT NOT NULL UNIQUE,
-                api_key TEXT NOT NULL,
-                created_at DATE DEFAULT (date('now', 'localtime'))
-            )
-        """)
-        conn.commit()
-    except Exception as e:
-        print(f"Error creating api_keys table: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
 def get_api_key(service_name):
     """获取指定服务的 API Key"""
     conn = get_db_connection()
@@ -763,55 +485,3 @@ def get_api_key(service_name):
     finally:
         cursor.close()
         conn.close()
-
-def set_api_key(service_name, api_key):
-    """设置或更新指定服务的 API Key"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            INSERT INTO api_keys (service_name, api_key) 
-            VALUES (?, ?)
-            ON CONFLICT(service_name) DO UPDATE SET api_key = excluded.api_key
-        """, (service_name, api_key))
-        conn.commit()
-    except Exception as e:
-        print(f"Error setting api key for {service_name}: {e}")
-    finally:
-        cursor.close()
-        conn.close()
-
-if __name__ == '__main__':
-    ''''''
-    # 删除表
-    # drop_tabel('daily')
-    # 新建daily表
-    # create_daily_table()
-    # 重置数据库
-    # reset_player_in_db()
-    # reset_daily_table()
-    # 查询当前所有数据
-    # query_all_data('users')
-    # print('=' * 50)
-    # query_all_data('daily')
-    # 查询当前排名
-    # res = query_ranking_in_db()
-    # print(res)
-    # 删除玩家
-    # delete_player_in_db('admin4')
-    # 重命名玩家
-    # rename_player_in_db('赌神', 'Tom Dwan')
-    # change_email_in_db('taozhen0109@163.com', 'taozhen')
-    # 查询玩家数据
-    # print(query_player_msg_in_db('你跟不跟吧', 'money'))
-    # 更新玩家数据
-    # update_player_msg_in_db('taozhen', 'money', 3000)
-    # reset_daily_table()
-    
-    # 添加头像字段
-    # add_avatar_column()
-    
-    # 创建 API Keys 表
-    create_api_keys_table()
-    # 设置 DeepSeek API Key
-    set_api_key('deepseek', 'sk-98513b3806954d50a2eb8c04fe210a98')

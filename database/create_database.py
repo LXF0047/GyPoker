@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 
 # 数据库文件路径
-DB_PATH = Path("/Users/f/Downloads/user.db")
+DB_PATH = Path("database/user.db")
 
 # 建表语句
 SCHEMA = """
@@ -28,7 +28,15 @@ CREATE TABLE IF NOT EXISTS daily (
     latest_money FLOAT,
     date DATE DEFAULT (date('now'))
 );
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_name TEXT NOT NULL UNIQUE,
+    api_key TEXT NOT NULL,
+    created_at DATE DEFAULT (date('now', 'localtime'))
+);
 """
+
 
 def create_database(db_path: Path, schema_sql: str):
     if db_path.exists():
@@ -48,6 +56,7 @@ def create_database(db_path: Path, schema_sql: str):
     conn.close()
 
     print(f"[完成] 数据库已创建: {db_path}")
+
 
 if __name__ == "__main__":
     create_database(DB_PATH, SCHEMA)
