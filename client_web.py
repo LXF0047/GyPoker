@@ -15,7 +15,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from poker.channel import ChannelError, MessageFormatError, MessageTimeout
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
-from poker.database import get_db_connection, get_ranking_list, get_api_key
+from poker.database import get_ranking_list
+from poker.db_utils import get_player_by_id, get_player_by_login_username, create_player, get_api_key
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "!!_-pyp0k3r-_!!"
@@ -53,14 +54,12 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
-    user_data = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
+    user_data = get_player_by_id(user_id)
     if user_data:
-        # 检查 avatar 列是否存在，如果不存在则为 None
-        avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
-        return User(user_data["id"], user_data["username"], user_data["password"],
-                    user_data["email"], user_data["money"], user_data["loan"], avatar)
+        # Mapping: nickname -> username (User class property), username -> email (User class property)
+        # chips -> money, loan -> 0
+        return User(user_data["id"], user_data["nickname"], user_data["password_hash"],
+                    user_data["username"], user_data["chips"], 0, user_data["avatar"])
     return None
 
 
@@ -76,32 +75,33 @@ def index():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form["username"]
+        username = request.form["username"] # This is the Nickname (Display Name)
         password = request.form["password"]
-        email = request.form["email"]
+        email = request.form["email"]       # This is the Login Username
         invite = request.form["invite"]
-        avatar = request.form.get("avatar") # 获取头像
+        avatar = request.form.get("avatar")
 
         if invite != INVITE_CODE:
             flash("Invalid invite code. Please try again.")
             return render_template("new_login.html", mode="register")
 
-        conn = get_db_connection()
-        existing_user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        # Check if login username exists
+        existing_user = get_player_by_login_username(email)
 
         if existing_user:
-            conn.close()
             flash("Username already exists. Please choose another one.")
             return render_template("new_login.html", mode="register")
 
         hashed_password = generate_password_hash(password)
-        conn.execute("INSERT INTO users (username, password, email, avatar) VALUES (?, ?, ?, ?)",
-                     (username, hashed_password, email, avatar))
-        conn.commit()
-        conn.close()
-
-        flash("Registration successful! Please log in.")
-        return redirect(url_for("login"))
+        
+        success = create_player(email, hashed_password, username, avatar)
+        
+        if success:
+            flash("Registration successful! Please log in.")
+            return redirect(url_for("login"))
+        else:
+            flash("Registration failed. Please try again.")
+            return render_template("new_login.html", mode="register")
 
     return render_template("new_login.html", mode="register")
 
@@ -109,17 +109,14 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"]
+        email = request.form["email"] # Login Username
         password = request.form["password"]
 
-        conn = get_db_connection()
-        user_data = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        conn.close()
+        user_data = get_player_by_login_username(email)
 
-        if user_data and check_password_hash(user_data["password"], password):
-            avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
-            user = User(user_data["id"], user_data["username"], user_data["password"],
-                        user_data["email"], user_data["money"], user_data["loan"], avatar)
+        if user_data and check_password_hash(user_data["password_hash"], password):
+            user = User(user_data["id"], user_data["nickname"], user_data["password_hash"],
+                        user_data["username"], user_data["chips"], 0, user_data["avatar"])
             login_user(user)
             return redirect(url_for("join"))
 
@@ -293,11 +290,9 @@ def poker_game(data, connection_channel: str):
     if current_user.is_authenticated:
         player_avatar = current_user.avatar
     else:
-        conn = get_db_connection()
-        user_data = conn.execute("SELECT avatar FROM users WHERE id = ?", (player_id,)).fetchone()
-        conn.close()
+        user_data = get_player_by_id(player_id)
         if user_data:
-            player_avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
+            player_avatar = user_data["avatar"]
 
     # 如果头像数据过大，截断或置空
     if player_avatar and len(player_avatar) > 50000:
