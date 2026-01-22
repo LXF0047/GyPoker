@@ -726,6 +726,17 @@ const PyPoker = {
                 `;
                 tbody.appendChild(row);
             });
+
+            // 如果之前请求了清空积分，现在收到了新的排行榜数据，说明清空成功
+            if (PyPoker.wantsToResetScores) {
+                PyPoker.wantsToResetScores = false;
+                const resetBtn = document.getElementById('reset-scores-btn');
+                if (resetBtn) {
+                    resetBtn.value = '清空积分';
+                    resetBtn.disabled = false;
+                    alert('积分已清空！');
+                }
+            }
         },
 
         fetchRankingData: function() {
@@ -987,7 +998,8 @@ const PyPoker = {
                     }
                     if (PyPoker.wantsToResetScores) {
                         pongMsg.reset_scores = true;
-                        PyPoker.wantsToResetScores = false;
+                        // 这里不再将 wantsToResetScores 设为 false，而是等待服务器确认（通过排行榜更新）
+                        // PyPoker.wantsToResetScores = false;
                     }
                     PyPoker.socket.emit('game_message', pongMsg);
                     break;
