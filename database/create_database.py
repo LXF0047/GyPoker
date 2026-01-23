@@ -99,7 +99,44 @@ CREATE TABLE IF NOT EXISTS player_daily_stats (
   PRIMARY KEY(stat_date, player_id)
 );
 
--- 8) api_keys表
+-- 8) 筹码流水表
+CREATE TABLE IF NOT EXISTS chip_transactions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id   INTEGER NOT NULL,
+  tx_time     TEXT NOT NULL DEFAULT (datetime('now')),
+  tx_date     TEXT NOT NULL DEFAULT (date('now')), -- 方便按天统计
+  tx_type     TEXT NOT NULL CHECK (tx_type IN ('daily_reset','auto_topup','admin_adjust')),
+  amount      INTEGER NOT NULL,                    -- 正数表示发放/补充，负数表示扣除
+  hand_id     INTEGER,                             -- 可选：关联发生在哪一手之后
+  note        TEXT,
+  FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE,
+  FOREIGN KEY(hand_id) REFERENCES hands(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chip_tx_player_date ON chip_transactions(player_id, tx_date);
+
+-- 9) 玩家历史累计（个人页/总榜/画像）
+CREATE TABLE IF NOT EXISTS player_lifetime_stats (
+  player_id       INTEGER PRIMARY KEY,
+  hands_played    INTEGER NOT NULL DEFAULT 0 CHECK (hands_played >= 0),
+  net_chips       INTEGER NOT NULL DEFAULT 0,      -- 可为负
+  net_bb          REAL    NOT NULL DEFAULT 0.0,    -- 可为负
+  total_points    INTEGER NOT NULL DEFAULT 0 CHECK (total_points >= 0),
+
+  -- 历史画像累计字段
+  vpip_hands      INTEGER NOT NULL DEFAULT 0 CHECK (vpip_hands >= 0),
+  pfr_hands       INTEGER NOT NULL DEFAULT 0 CHECK (pfr_hands >= 0),
+  threebet_hands  INTEGER NOT NULL DEFAULT 0 CHECK (threebet_hands >= 0),
+  agg_bets_raises INTEGER NOT NULL DEFAULT 0 CHECK (agg_bets_raises >= 0),
+  agg_calls       INTEGER NOT NULL DEFAULT 0 CHECK (agg_calls >= 0),
+  wtsd_hands      INTEGER NOT NULL DEFAULT 0 CHECK (wtsd_hands >= 0),
+  wsd_hands       INTEGER NOT NULL DEFAULT 0 CHECK (wsd_hands >= 0),
+
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
+);
+
+-- 10) api_keys表
 CREATE TABLE IF NOT EXISTS api_keys (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   service_name    TEXT NOT NULL,
