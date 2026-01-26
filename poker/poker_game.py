@@ -198,6 +198,10 @@ class GamePots:
         self._pots = []
         self._bets = {player.id: 0.0 for player in game_players.all}
 
+    @property
+    def bets(self) -> Dict[int, float]:
+        return self._bets
+
     def add_bets(self, bets: Dict[int, float]):
         for player in self._game_players.all:  # self._game_players.all所有未出局玩家的Player列表
             self._bets[player.id] += bets[player.id] if player.id in bets else 0.0
