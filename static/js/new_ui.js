@@ -5,7 +5,6 @@
 const PyPoker = {
     socket: null,
     wantsToStartFinalHands: false,
-    wantsToResetScores: false,
     roomId: null,
     players: {},
     playerIds: [],
@@ -762,17 +761,6 @@ const PyPoker = {
                 `;
                 tbody.appendChild(row);
             });
-
-            // 如果之前请求了清空积分，现在收到了新的排行榜数据，说明清空成功
-            if (PyPoker.wantsToResetScores) {
-                PyPoker.wantsToResetScores = false;
-                const resetBtn = document.getElementById('reset-scores-btn');
-                if (resetBtn) {
-                    resetBtn.value = '清空积分';
-                    resetBtn.disabled = false;
-                    alert('积分已清空！');
-                }
-            }
         },
 
         fetchRankingData: function() {
@@ -878,10 +866,8 @@ const PyPoker = {
             // 房主功能按钮显示
             if (message.owner_id == currentPlayerId) {
                 document.getElementById('last-10-hands-btn').style.display = 'inline-block';
-                document.getElementById('reset-scores-btn').style.display = 'inline-block';
             } else {
                 document.getElementById('last-10-hands-btn').style.display = 'none';
-                document.getElementById('reset-scores-btn').style.display = 'none';
             }
 
             // 更新房主名称
@@ -1054,11 +1040,6 @@ const PyPoker = {
                         pongMsg.start_final_10_hands = true;
                         PyPoker.wantsToStartFinalHands = false;
                     }
-                    if (PyPoker.wantsToResetScores) {
-                        pongMsg.reset_scores = true;
-                        // 这里不再将 wantsToResetScores 设为 false，而是等待服务器确认（通过排行榜更新）
-                        // PyPoker.wantsToResetScores = false;
-                    }
                     PyPoker.socket.emit('game_message', pongMsg);
                     break;
 
@@ -1126,15 +1107,6 @@ const PyPoker = {
             PyPoker.wantsToStartFinalHands = true;
             this.value = '下把开始最后10把';
             this.disabled = true;
-        });
-
-        // 清空积分按钮
-        document.getElementById('reset-scores-btn').addEventListener('click', function() {
-            if (confirm('确定要清空所有玩家的积分吗？此操作不可逆转。')) {
-                PyPoker.wantsToResetScores = true;
-                this.value = '请求已发送';
-                this.disabled = true;
-            }
         });
 
         // 弃牌按钮
