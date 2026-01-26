@@ -5,7 +5,7 @@ import gevent
 
 from .player_server import PlayerServer
 from .poker_game import GameSubscriber, GameError, GameFactory
-from .database import update_player_in_db
+from .db_utils import update_player_wallet
 
 
 class FullGameRoomException(Exception):
@@ -206,15 +206,14 @@ class GameRoom(GameSubscriber):
                 # 强制从数据库同步数据，解决登录时显示金额不一致的问题
                 # 即使房间活跃或有手牌进行中，也优先使用数据库中的数据（通常是用户登录时读取的）
                 old_player._money = player.money
-                old_player._loan = player.loan
                 old_player._avatar = player.avatar
-                self._logger.info(f"Synced player {player.id} from DB: money={player.money}, loan={player.loan}, avatar={player.avatar}")
+                self._logger.info(f"Synced player {player.id} from DB: money={player.money}, avatar={player.avatar}")
 
                 # 更新连接通道
                 old_player.update_channel(player)
                 player = old_player
                 # 记录重连信息
-                self._logger.info(f"Player {player.id} reconnected. Current money: {player.money}, loan: {player.loan}")
+                self._logger.info(f"Player {player.id} reconnected. Current money: {player.money}")
                 self._room_event_handler.room_event("player-rejoined", player.id, self.owner)
 
             for event_message in self._event_messages:
@@ -240,8 +239,8 @@ class GameRoom(GameSubscriber):
         player = self._room_players.get_player(player_id)
         # 玩家离开前保存筹码到数据库，防止数据丢失
         try:
-            update_player_in_db(player.dto())
-            self._logger.info(f"Player {player_id} leaving, saved money: {player.money}, loan: {player.loan}")
+            update_player_wallet(player.id, player.money)
+            self._logger.info(f"Player {player_id} leaving, saved money: {player.money}")
         except Exception as e:
             self._logger.error(f"Failed to save player {player_id} data on leave: {e}")
         player.disconnect()
@@ -359,6 +358,12 @@ class GameRoom(GameSubscriber):
                     players = self._room_players.players
                     if len(players) < 2:
                         raise GameError("At least two players needed to start a new game")
+                    
+                    # Assign seats to players
+                    current_seats = self._room_players.seats
+                    for p in players:
+                        if p.id in current_seats:
+                            p.seat = current_seats.index(p.id)
 
                     if self.is_final_countdown:
                         self.current_hand_count += 1
@@ -377,11 +382,11 @@ class GameRoom(GameSubscriber):
                     
                     try:
                         self.hand_in_progress = True
-                        game = self._game_factory.create_game(players)  # game是HoldemPokerGame()
+                        game = self._game_factory.create_game(players, room_id=self.id)  # game是HoldemPokerGame()
                         game.event_dispatcher.subscribe(self)  # 添加订阅者
                         game.play_hand(players[dealer_key].id)  # 开始游戏
                         game.save_player_data()  # 保存玩家数据
-                        game.update_ranking_list()  # 更新排行榜
+                        game.update_daily_ranking_list()  # 更新排行榜
                         game.event_dispatcher.unsubscribe(self)  # 取消订阅
                     finally:
                         self.hand_in_progress = False

@@ -1,29 +1,14 @@
 # _*_ coding: utf-8 _*_
-# @Time : 2026/1/23 00:52 
-# @Author : lxf 
+# @Time : 2026/1/23 14:55
+# @Author : lxf
 # @Version：V 0.1
-# @File : db_utils.py
-# @desc : New database utility functions using the updated schema
+# @File : player_utils.py
+# @desc : Player management database operations
 
 import sqlite3
 import logging
 from typing import Optional, Dict, Any
-
-# Database path (relative to project root)
-DB_PATH = "database/poker.sqlite3"
-
-def get_db_connection():
-    """Establishes a connection to the SQLite database."""
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        # Enable WAL mode for concurrency
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA synchronous = NORMAL;")
-        return conn
-    except sqlite3.Error as e:
-        logging.error(f"Database connection error: {e}")
-        return None
+from .base import get_db_connection
 
 def get_player_by_login_username(username: str) -> Optional[Dict[str, Any]]:
     """
@@ -37,14 +22,14 @@ def get_player_by_login_username(username: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
     if not conn:
         return None
-    
+
     try:
         cursor = conn.execute("""
-            SELECT p.id, p.username, p.password_hash, p.nickname, p.avatar, w.chips 
-            FROM players p
-            LEFT JOIN wallet w ON p.id = w.player_id
-            WHERE p.username = ?
-        """, (username,))
+                              SELECT p.id, p.username, p.password_hash, p.nickname, p.avatar, w.chips
+                              FROM players p
+                                       LEFT JOIN wallet w ON p.id = w.player_id
+                              WHERE p.username = ?
+                              """, (username,))
         row = cursor.fetchone()
         if row:
             return dict(row)
@@ -54,6 +39,7 @@ def get_player_by_login_username(username: str) -> Optional[Dict[str, Any]]:
         return None
     finally:
         conn.close()
+
 
 def get_player_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     """
@@ -66,11 +52,11 @@ def get_player_by_id(user_id: int) -> Optional[Dict[str, Any]]:
 
     try:
         cursor = conn.execute("""
-            SELECT p.id, p.username, p.password_hash, p.nickname, p.avatar, w.chips 
-            FROM players p
-            LEFT JOIN wallet w ON p.id = w.player_id
-            WHERE p.id = ?
-        """, (user_id,))
+                              SELECT p.id, p.username, p.password_hash, p.nickname, p.avatar, w.chips
+                              FROM players p
+                                       LEFT JOIN wallet w ON p.id = w.player_id
+                              WHERE p.id = ?
+                              """, (user_id,))
         row = cursor.fetchone()
         if row:
             return dict(row)
@@ -80,6 +66,7 @@ def get_player_by_id(user_id: int) -> Optional[Dict[str, Any]]:
         return None
     finally:
         conn.close()
+
 
 def create_player(username: str, password_hash: str, nickname: str, avatar: str) -> bool:
     """
@@ -98,9 +85,9 @@ def create_player(username: str, password_hash: str, nickname: str, avatar: str)
 
     try:
         conn.execute("""
-            INSERT INTO players (username, password_hash, nickname, avatar)
-            VALUES (?, ?, ?, ?)
-        """, (username, password_hash, nickname, avatar))
+                     INSERT INTO players (username, password_hash, nickname, avatar)
+                     VALUES (?, ?, ?, ?)
+                     """, (username, password_hash, nickname, avatar))
         conn.commit()
         return True
     except sqlite3.IntegrityError:
@@ -112,18 +99,43 @@ def create_player(username: str, password_hash: str, nickname: str, avatar: str)
     finally:
         conn.close()
 
-def get_api_key(service_name: str) -> Optional[str]:
-    """Get API Key for a service."""
+def update_player_profile(user_id: int, nickname: str = None, password_hash: str = None, avatar: str = None) -> bool:
+    """
+    Update player profile.
+    """
     conn = get_db_connection()
     if not conn:
-        return None
+        return False
         
     try:
-        cursor = conn.execute("SELECT api_key FROM api_keys WHERE service_name = ?", (service_name,))
-        result = cursor.fetchone()
-        return result['api_key'] if result else None
+        # Construct query dynamically based on provided fields
+        updates = []
+        params = []
+        
+        if nickname is not None:
+            updates.append("nickname = ?")
+            params.append(nickname)
+            
+        if password_hash is not None:
+            updates.append("password_hash = ?")
+            params.append(password_hash)
+            
+        if avatar is not None:
+            updates.append("avatar = ?")
+            params.append(avatar)
+            
+        if not updates:
+            return True # Nothing to update
+            
+        params.append(user_id)
+        
+        query = f"UPDATE players SET {', '.join(updates)} WHERE id = ?"
+        
+        conn.execute(query, tuple(params))
+        conn.commit()
+        return True
     except sqlite3.Error as e:
-        logging.error(f"Error getting api key for {service_name}: {e}")
-        return None
+        logging.error(f"Error updating player {user_id}: {e}")
+        return False
     finally:
         conn.close()

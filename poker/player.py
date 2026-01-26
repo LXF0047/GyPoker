@@ -1,16 +1,17 @@
-from .database import INIT_MONEY, query_player_msg_in_db
+from .config import INIT_MONEY
+
 
 class Player:
-    def __init__(self, id: str, name: str, money: float, loan: int, ready: bool, avatar: str = None):
-        self._id: str = id
-        self._name: str = name
-        self._money: float = money
-        self._loan: int = loan
-        self._ready: bool = ready
-        self._avatar: str = avatar
+    def __init__(self, id, name, money, avatar=None, ready=False):
+        self._id = id
+        self._name = name
+        self._money = money
+        self._avatar = avatar
+        self.seat = None
+        self._ready = ready
 
     @property
-    def id(self) -> str:
+    def id(self) -> int:
         return self._id
 
     @property
@@ -20,10 +21,6 @@ class Player:
     @property
     def money(self) -> float:
         return self._money
-
-    @property
-    def loan(self) -> int:
-        return self._loan
 
     @property
     def ready(self) -> bool:
@@ -38,7 +35,6 @@ class Player:
             "id": self.id,
             "name": self.name,
             "money": self.money,
-            "loan": self.loan,
             "avatar": self.avatar,
         }
 
@@ -54,32 +50,27 @@ class Player:
             raise ValueError("Money has to be a positive amount")
         self._money += money
 
-    def refund_money(self, times: int):
-        # 还钱
-        if times > self._loan:
-            raise ValueError("Player does not have enough loan")
-        self._money -= times * INIT_MONEY
-        self._loan -= times
-
     def add_loan(self):
         self.add_money(INIT_MONEY)
-        self._loan += 1
 
     def sync_from_database(self):
         """
-        从daily中同步最新数据
+        Sync player data (money and avatar) from the database.
         """
         try:
-            latest_money = query_player_msg_in_db('daily', self._name, 'money')
-            latest_loan = query_player_msg_in_db('users', self._name, 'loan')
-            latest_avatar = query_player_msg_in_db('users', self._name, 'avatar')
+            # Avoid circular import if any, do local import
+            from poker.db_utils import get_player_by_id
             
-            if latest_money is not None:
-                self._money = float(latest_money)
-            if latest_loan is not None:
-                self._loan = int(latest_loan)
-            if latest_avatar is not None:
-                self._avatar = str(latest_avatar)
+            player_data = get_player_by_id(self._id)
+            if player_data:
+                # 'chips' in wallet table maps to money
+                if player_data.get('chips') is not None:
+                    self._money = float(player_data['chips'])
+                
+                # 'avatar' in players table
+                if player_data.get('avatar') is not None:
+                    self._avatar = str(player_data['avatar'])
+                    
         except Exception as e:
             print(f"Error syncing player {self._name} data from database: {e}")
 

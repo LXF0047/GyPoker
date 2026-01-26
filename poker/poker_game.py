@@ -9,6 +9,7 @@ from .deck import DeckFactory, Deck
 from .player import Player
 from .player_server import PlayerServer
 from .score_detector import Score, ScoreDetector
+from .config import BET_TIMEOUT, TIMEOUT_TOLERANCE
 
 
 class GameError(Exception):
@@ -24,7 +25,7 @@ class EndRoundException(Exception):
 
 
 class GameFactory:
-    def create_game(self, players: List[PlayerServer]):
+    def create_game(self, players: List[PlayerServer], room_id: str = None):
         raise NotImplemented
 
 
@@ -37,21 +38,21 @@ class GameSubscriber:
 class GamePlayers:
     def __init__(self, players: List[Player]):
         # Dictionary of players keyed by their ids
-        self._players: Dict[str, Player] = {player.id: player for player in players}  # 玩家id-Player字典
+        self._players: Dict[int, Player] = {player.id: player for player in players}  # 玩家id-Player字典
         # List of player ids sorted according to the original players list
-        self._player_ids: List[str] = [player.id for player in players]  # 玩家id列表
+        self._player_ids: List[int] = [player.id for player in players]  # 玩家id列表
         # List of folder ids
-        self._folder_ids: Set[str] = set()  # 弃牌玩家
+        self._folder_ids: Set[int] = set()  # 弃牌玩家
         # Dead players
-        self._dead_player_ids: Set[str] = set()  # 出局玩家
+        self._dead_player_ids: Set[int] = set()  # 出局玩家
 
-    def fold(self, player_id: str):
+    def fold(self, player_id: int):
         # 弃牌玩家加入弃牌集合
         if player_id not in self._player_ids:
             raise ValueError("Unknown player id")
         self._folder_ids.add(player_id)
 
-    def remove(self, player_id: str):
+    def remove(self, player_id: int):
         # 移除玩家，同事标记为弃牌和已出局
         self.fold(player_id)
         self._dead_player_ids.add(player_id)
@@ -60,7 +61,7 @@ class GamePlayers:
         # 在游戏的某些环节（如新的一轮开始之前），需要清除上一轮中未出局玩家的弃牌状态，但保留已出局玩家的状态。
         self._folder_ids = set(self._dead_player_ids)
 
-    def round(self, dealer_id: str, reverse=False) -> Generator[Player, None, None]:
+    def round(self, dealer_id: int, reverse=False) -> Generator[Player, None, None]:
         """
         a,b,c,d,e 如果dealer_id是b，那么迭代器返回的结果为c, d, e, a, b
         列表第一位是小盲第二位是大盲最后一位是庄家
@@ -74,14 +75,14 @@ class GamePlayers:
             if player_id not in self._folder_ids:
                 yield self._players[player_id]
 
-    def get(self, player_id: str) -> Player:
+    def get(self, player_id: int) -> Player:
         # 根据玩家id获取对象
         try:
             return self._players[player_id]
         except KeyError:
             raise ValueError("Unknown player id")
 
-    def get_next(self, dealer_id: str) -> Optional[Player]:
+    def get_next(self, dealer_id: int) -> Optional[Player]:
         # 获取下一个未弃牌玩家
         if dealer_id not in self._player_ids:
             raise ValueError("Unknown player id")
@@ -95,7 +96,7 @@ class GamePlayers:
                 return self._players[next_id]
         return None
 
-    def is_active(self, player_id: str) -> bool:
+    def is_active(self, player_id: int) -> bool:
         # 检查玩家是否弃牌
         if player_id not in self._player_ids:
             raise ValueError("Unknown player id")
@@ -133,7 +134,7 @@ class GamePlayers:
 class GameScores:
     def __init__(self, score_detector: ScoreDetector):
         self._score_detector: ScoreDetector = score_detector
-        self._players_cards: Dict[str, List[Card]] = {}
+        self._players_cards: Dict[int, List[Card]] = {}
         self._shared_cards: List[Card] = []
 
     @property
@@ -141,15 +142,15 @@ class GameScores:
         # 获取公共牌
         return self._shared_cards
 
-    def player_cards(self, player_id: str):
+    def player_cards(self, player_id: int):
         # 获取玩家手牌
         return self._players_cards[player_id]
 
-    def player_score(self, player_id: str):
+    def player_score(self, player_id: int):
         # 计分
         return self._score_detector.get_score(self._players_cards[player_id] + self._shared_cards)
 
-    def assign_cards(self, player_id: str, cards: List[Card]):
+    def assign_cards(self, player_id: int, cards: List[Card]):
         # 分配手牌
         self._players_cards[player_id] = self._score_detector.get_score(cards).cards
 
@@ -197,7 +198,7 @@ class GamePots:
         self._pots = []
         self._bets = {player.id: 0.0 for player in game_players.all}
 
-    def add_bets(self, bets: Dict[str, float]):
+    def add_bets(self, bets: Dict[int, float]):
         for player in self._game_players.all:  # self._game_players.all所有未出局玩家的Player列表
             self._bets[player.id] += bets[player.id] if player.id in bets else 0.0
 
@@ -341,7 +342,7 @@ class GameEventDispatcher:
         )
 
     def winner_designation_event(self, players: List[Player], pot: GamePots.GamePot, winners: List[Player],
-                                 money_split: float, upcoming_pots: GamePots):
+                                 money_split: float, upcoming_pots: GamePots, bets: Dict[int, float]):
         # 赢家判定
         self.raise_event(
             "winner-designation",
@@ -359,11 +360,12 @@ class GameEventDispatcher:
                     }
                     for upcoming_pot in upcoming_pots
                 ],
-                "players": {player.id: player.dto() for player in players}
+                "players": {player.id: player.dto() for player in players},
+                "bets": bets
             }
         )
 
-    def bet_action_event(self, player: Player, min_bet: float, max_bet: float, bets: Dict[str, float], timeout: int,
+    def bet_action_event(self, player: Player, min_bet: float, max_bet: float, bets: Dict[int, float], timeout: int,
                          timeout_epoch: float):
         # 下注动作
         self.raise_event(
@@ -481,7 +483,7 @@ class GameBetRounder:
     def __init__(self, game_players: GamePlayers):
         self._game_players: GamePlayers = game_players
 
-    def _get_max_bet(self, dealer: Player, bets: Dict[str, float]) -> float:
+    def _get_max_bet(self, dealer: Player, bets: Dict[int, float]) -> float:
         """
         计算当前玩家（dealer）的最大可下注金额。
 
@@ -510,7 +512,7 @@ class GameBetRounder:
             dealer.money
         )
 
-    def _get_min_bet(self, dealer: Player, bets: Dict[str, float]) -> float:
+    def _get_min_bet(self, dealer: Player, bets: Dict[int, float]) -> float:
         """
         计算当前玩家（dealer）的最小可下注金额。
 
@@ -526,7 +528,7 @@ class GameBetRounder:
             dealer.money
         )
 
-    def bet_round(self, dealer_id: str, bets: Dict[str, float], get_bet_function, on_bet_function=None, blind_bet: bool=False) -> Optional[
+    def bet_round(self, dealer_id: int, bets: Dict[int, float], get_bet_function, on_bet_function=None, blind_bet: bool=False) -> Optional[
         PlayerServer]:
         """
         performs a complete bet round
@@ -611,15 +613,16 @@ class GameBetHandler:
     - _wait_after_round (int): 每轮下注结束后的等待时间（秒）。
     """
     def __init__(self, game_players: GamePlayers, bet_rounder: GameBetRounder, event_dispatcher: GameEventDispatcher,
-                 bet_timeout: int, timeout_tolerance: int, wait_after_round: int):
+                 bet_timeout: int, timeout_tolerance: int, wait_after_round: int, on_action_callback=None):
         self._game_players: GamePlayers = game_players
         self._bet_rounder: GameBetRounder = bet_rounder
         self._event_dispatcher: GameEventDispatcher = event_dispatcher
         self._bet_timeout: int = bet_timeout
         self._timeout_tolerance: int = timeout_tolerance
         self._wait_after_round: int = wait_after_round
+        self._on_action_callback = on_action_callback
 
-    def any_bet(self, bets: Dict[str, float]) -> bool:
+    def any_bet(self, bets: Dict[int, float]) -> bool:
         """
         检查当前是否有任何玩家下注。
 
@@ -631,7 +634,7 @@ class GameBetHandler:
         """
         return any(k for k in bets if bets[k] > 0)
 
-    def bet_round(self, dealer_id: str, bets: Dict[str, float], pots: GamePots, blind_bet: bool = False):
+    def bet_round(self, dealer_id: int, bets: Dict[int, float], pots: GamePots, blind_bet: bool = False):
         """
         执行一轮下注操作。
 
@@ -651,7 +654,7 @@ class GameBetHandler:
             self._event_dispatcher.pots_update_event(self._game_players.active, pots)
         return best_player
 
-    def get_bet(self, player, min_bet: float, max_bet: float, bets: Dict[str, float]) -> Optional[int]:
+    def get_bet(self, player, min_bet: float, max_bet: float, bets: Dict[int, float]) -> Optional[int]:
         """
         获取玩家的下注金额。
 
@@ -716,7 +719,7 @@ class GameBetHandler:
             player.send_message({"message_type": "error", "error": e.args[0]})
             return -1
 
-    def on_bet(self, player: Player, bet: float, min_bet: float, max_bet: float, bets: Dict[str, float]):
+    def on_bet(self, player: Player, bet: float, min_bet: float, max_bet: float, bets: Dict[int, float]):
         """
         处理玩家的下注事件并触发相关事件。
 
@@ -739,8 +742,13 @@ class GameBetHandler:
 
         if bet == -1:
             self._event_dispatcher.fold_event(player)
+            # Call callback for fold (bet = -1)
+            if self._on_action_callback:
+                self._on_action_callback(player, -1, 0, 0, bets)
         else:
             self._event_dispatcher.bet_event(player, bet, get_bet_type(bet), bets)
+            if self._on_action_callback:
+                self._on_action_callback(player, bet, min_bet, max_bet, bets)
 
 
 class PokerGame:
@@ -759,8 +767,6 @@ class PokerGame:
         - 发送赢家信息
         - 摊牌流程
     """
-    TIMEOUT_TOLERANCE = 2
-    BET_TIMEOUT = 180  # 每轮下注的超时时间
 
     WAIT_AFTER_CARDS_ASSIGNMENT = 1  # 发牌后等待时间
     WAIT_AFTER_BET_ROUND = 1   # 下注轮次后等待时间
@@ -768,8 +774,9 @@ class PokerGame:
     WAIT_AFTER_WINNER_DESIGNATION = 1  # 赢家判定后等待时间
 
     def __init__(self, id: str, game_players: GamePlayers, event_dispatcher: GameEventDispatcher,
-                 deck_factory: DeckFactory, score_detector: ScoreDetector):
+                 deck_factory: DeckFactory, score_detector: ScoreDetector, room_id: str = None):
         self._id: str = id
+        self._room_id: str = room_id
         self._game_players: GamePlayers = game_players
         self._event_dispatcher: GameEventDispatcher = event_dispatcher
         self._deck_factory: DeckFactory = deck_factory
@@ -781,7 +788,7 @@ class PokerGame:
     def event_dispatcher(self) -> GameEventDispatcher:
         return self._event_dispatcher
 
-    def play_hand(self, dealer_id: str):
+    def play_hand(self, dealer_id: int):
         """
         玩法具体实现
         """
@@ -789,6 +796,10 @@ class PokerGame:
 
     def save_player_data(self):
         raise NotImplemented
+        
+    def _on_player_action(self, player, bet, min_bet, max_bet, bets):
+        """Callback for player actions, to be overridden for DB logging"""
+        pass
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Factory methods
@@ -802,9 +813,10 @@ class PokerGame:
             game_players=self._game_players,
             bet_rounder=GameBetRounder(self._game_players),
             event_dispatcher=self._event_dispatcher,
-            bet_timeout=self.BET_TIMEOUT,
-            timeout_tolerance=self.TIMEOUT_TOLERANCE,
-            wait_after_round=self.WAIT_AFTER_BET_ROUND
+            bet_timeout=BET_TIMEOUT,
+            timeout_tolerance=TIMEOUT_TOLERANCE,
+            wait_after_round=self.WAIT_AFTER_BET_ROUND,
+            on_action_callback=self._on_player_action
         )
 
     def _create_winners_detector(self) -> GameWinnersDetector:
@@ -838,7 +850,7 @@ class PokerGame:
     # Cards handler
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def _assign_cards(self, number_of_cards: int, dealer_id: str, deck: Deck, scores: GameScores):
+    def _assign_cards(self, number_of_cards: int, dealer_id: int, deck: Deck, scores: GameScores):
         """
         给每名玩家分配手牌。
 
@@ -883,17 +895,21 @@ class PokerGame:
         if self._game_players.count_active() < 2:
             raise EndGameException
 
-    def _detect_winners(self, pots: GamePots, scores: GameScores):
+    def _detect_winners(self, pots: GamePots, scores: GameScores) -> Set[int]:
         """
         检测并分配赢家。
 
         参数：
         - pots (GamePots): 当前游戏的奖金池管理器。
         - scores (GameScores): 管理玩家得分的组件。
+        
+        返回：
+        - Set[int]: 所有赢家的ID集合。
 
         异常：
         - GameError: 如果没有玩家可以分配奖金。
         """
+        all_winner_ids = set()
         for i, pot in enumerate(reversed(pots)):
             winners = self._winners_detector.get_winners(pot.players, scores)
             try:
@@ -903,16 +919,19 @@ class PokerGame:
             else:
                 for winner in winners:
                     winner.add_money(money_split)
+                    all_winner_ids.add(winner.id)
 
                 self._event_dispatcher.winner_designation_event(
                     players=self._game_players.active,
                     pot=pot,
                     winners=winners,
                     money_split=money_split,
-                    upcoming_pots=pots[:-(i + 1)]
+                    upcoming_pots=pots[:-(i + 1)],
+                    bets=pots.bets
                 )
 
                 gevent.sleep(self.WAIT_AFTER_WINNER_DESIGNATION)
+        return all_winner_ids
 
     def _showdown(self, scores: GameScores):
         """
