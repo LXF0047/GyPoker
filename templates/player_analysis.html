@@ -164,10 +164,15 @@
                                 if (match) {
                                     const holeCards = JSON.parse(match[1]);
                                     const ranks = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2'};
-                                    const suits = {3:'h', 2:'d', 1:'c', 0:'s'};
+                                    const suitIcons = {
+                                        3: '<span class="text-red-500 mx-0.5">♥</span>',
+                                        2: '<span class="text-blue-400 mx-0.5">♦</span>',
+                                        1: '<span class="text-green-500 mx-0.5">♣</span>',
+                                        0: '<span class="text-gray-300 mx-0.5">♠</span>'
+                                    };
                                     if (Array.isArray(holeCards) && holeCards.length === 2) {
                                         const c1 = holeCards[0], c2 = holeCards[1];
-                                        const cardStr = `${ranks[c1[0]]||c1[0]}${suits[c1[1]]||''}${ranks[c2[0]]||c2[0]}${suits[c2[1]]||''}`;
+                                        const cardStr = `<span class="inline-flex items-center ml-1">${ranks[c1[0]]||c1[0]}${suitIcons[c1[1]]||''}${ranks[c2[0]]||c2[0]}${suitIcons[c2[1]]||''}</span>`;
                                         document.write("Win with " + cardStr);
                                     } else {
                                         document.write(desc);
@@ -316,10 +321,17 @@
                                                 try {
                                                     const holeCards = {{ hand.hole_cards | safe }};
                                                     const ranks = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2'};
-                                                    const suits = {3:'h', 2:'d', 1:'c', 0:'s'};
+                                                    const suitIcons = {
+                                                        3: '<span class="text-red-500 mx-0.5">♥</span>',
+                                                        2: '<span class="text-blue-400 mx-0.5">♦</span>',
+                                                        1: '<span class="text-green-500 mx-0.5">♣</span>',
+                                                        0: '<span class="text-gray-300 mx-0.5">♠</span>'
+                                                    };
                                                     if (Array.isArray(holeCards) && holeCards.length === 2) {
                                                         const c1 = holeCards[0], c2 = holeCards[1];
-                                                        document.write(`${ranks[c1[0]]||c1[0]}${suits[c1[1]]||''} ${ranks[c2[0]]||c2[0]}${suits[c2[1]]||''}`);
+                                                        const h1 = `${ranks[c1[0]]||c1[0]}${suitIcons[c1[1]]||''}`;
+                                                        const h2 = `${ranks[c2[0]]||c2[0]}${suitIcons[c2[1]]||''}`;
+                                                        document.write(`<div class="flex items-center gap-1">${h1}${h2}</div>`);
                                                     } else {
                                                         document.write(holeCards);
                                                     }
