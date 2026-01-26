@@ -93,15 +93,15 @@ def get_daily_ranking_list():
         return []
 
     try:
-        # Use COALESCE to fallback to username if nickname is null
+        today = date.today().isoformat()
         cursor = conn.execute("""
                               SELECT COALESCE(p.nickname, p.username) as name, w.chips, s.net_chips
                               FROM player_daily_stats s
                                        JOIN players p ON s.player_id = p.id
                                        JOIN wallet w ON s.player_id = w.player_id
-                              WHERE s.stat_date = date('now')
+                              WHERE s.stat_date = ?
                               ORDER BY s.net_chips DESC
-                              """)
+                              """, (today,))
         rows = cursor.fetchall()
 
         ranking = []

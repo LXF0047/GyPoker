@@ -169,12 +169,21 @@ class GamePots:
         def __init__(self):
             self._money = 0.0
             self._players: List[Player] = []
+            # 新增: 记录玩家在此特定底池中的贡献
+            self._contributions: Dict[int, float] = {}
 
         def add_money(self, money: float):
             self._money += money
 
         def add_player(self, player: Player):
             self._players.append(player)
+            # 新增: 初始化玩家贡献
+            if player.id not in self._contributions:
+                self._contributions[player.id] = 0.0
+
+        # 新增: 添加玩家贡献的方法
+        def add_player_contribution(self, player_id: int, amount: float):
+            self._contributions[player_id] = self._contributions.get(player_id, 0.0) + amount
 
         @property
         def money(self) -> float:
@@ -183,6 +192,11 @@ class GamePots:
         @property
         def players(self) -> List[Player]:
             return self._players
+
+        # 新增: 获取贡献的属性
+        @property
+        def contributions(self) -> Dict[int, float]:
+            return self._contributions
 
     def __len__(self):
         return len(self._pots)
@@ -270,6 +284,8 @@ class GamePots:
                     if self._game_players.is_active(players[j].id):
                         # 如果玩家活跃，将其加入当前奖金池的参与者列表
                         current_pot.add_player(players[j])
+                        # 新增: 记录活跃玩家对这个特定底池的贡献
+                        current_pot.add_player_contribution(players[j].id, pot_bet)
                     # 每个活跃玩家都需要匹配当前的下注金额（pot_bet）
                     current_pot.add_money(pot_bet)
                     bets[players[j].id] -= pot_bet  # 减少玩家的下注金额，记录匹配的部分
@@ -346,7 +362,7 @@ class GameEventDispatcher:
         )
 
     def winner_designation_event(self, players: List[Player], pot: GamePots.GamePot, winners: List[Player],
-                                 money_split: float, upcoming_pots: GamePots, bets: Dict[int, float]):
+                                 money_split: float, net_win_split: float, upcoming_pots: GamePots, bets: Dict[int, float]):
         # 赢家判定
         self.raise_event(
             "winner-designation",
@@ -355,7 +371,9 @@ class GameEventDispatcher:
                     "money": pot.money,
                     "player_ids": [player.id for player in pot.players],
                     "winner_ids": [winner.id for winner in winners],
-                    "money_split": money_split
+                    "money_split": money_split,
+                    # 新增: 用于前端显示的净赢金额
+                    "net_win_split": net_win_split
                 },
                 "pots": [
                     {
@@ -922,14 +940,22 @@ class PokerGame:
                 raise GameError("No players left")
             else:
                 for winner in winners:
+                    # 核心业务逻辑: 给赢家账户加钱，此行不应改动以确保数据正确
                     winner.add_money(money_split)
                     all_winner_ids.add(winner.id)
+
+                # 新增: 为前端显示计算净利润
+                # 由于底池的所有赢家对该池的贡献相同，我们只取第一个赢家来计算
+                first_winner_contribution = pot.contributions.get(winners[0].id, 0.0)
+                net_win_for_display = money_split - first_winner_contribution
 
                 self._event_dispatcher.winner_designation_event(
                     players=self._game_players.active,
                     pot=pot,
                     winners=winners,
                     money_split=money_split,
+                    # 新增: 传入用于前端显示的净赢金额
+                    net_win_split=net_win_for_display,
                     upcoming_pots=pots[:-(i + 1)],
                     bets=pots.bets
                 )

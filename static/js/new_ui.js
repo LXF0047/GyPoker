@@ -474,7 +474,8 @@ const PyPoker = {
 
         // 设置赢家
         setWinners: function(pot) {
-            const moneySplit = pot.money_split;
+            // 优先使用后端计算好的净利润 `net_win_split`，如果不存在则回退到原始的 `money_split`
+            const moneyToShow = pot.net_win_split ?? pot.money_split;
             
             // 不再重置所有座位状态，而是累加赢家信息
             // 这样可以正确处理多边池的情况（先后触发多次 winner-designation）
@@ -513,7 +514,7 @@ const PyPoker = {
                             seat.appendChild(winLabel);
                         }
                         
-                        const newAmount = currentAmount + moneySplit;
+                        const newAmount = currentAmount + moneyToShow;
                         winLabel.textContent = `+$${newAmount}`;
                     }
                 });
