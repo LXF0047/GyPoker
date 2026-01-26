@@ -845,6 +845,7 @@ const PyPoker = {
                     seatDiv.innerHTML = `
                         <div class="avatar-container">
                             <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
+                            <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
                         </div>
                         <div class="player-info">
                             <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
@@ -890,14 +891,18 @@ const PyPoker = {
             switch (message.event) {
                 case 'player-added':
                 case 'player-rejoined':
+                case 'readiness-update':
                     const pId = message.player_id;
-                    const pData = message.players[pId];
-                    const pName = pId == currentPlayerId ? 'You' : pData.name;
                     
-                    if (message.event === 'player-added') {
-                        PyPoker.Logger.log(pName + ' 加入了房间');
-                    } else {
-                        PyPoker.Logger.log(pName + ' 重新连接');
+                    if (message.event === 'player-added' || message.event === 'player-rejoined') {
+                        const pData = message.players[pId];
+                        const pName = pId == currentPlayerId ? 'You' : (pData ? pData.name : 'Unknown');
+                        
+                        if (message.event === 'player-added') {
+                            PyPoker.Logger.log(pName + ' 加入了房间');
+                        } else {
+                            PyPoker.Logger.log(pName + ' 重新连接');
+                        }
                     }
 
                     // Update local state
@@ -922,6 +927,7 @@ const PyPoker = {
                                 seat.innerHTML = `
                                     <div class="avatar-container">
                                         <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
+                                        <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
                                     </div>
                                     <div class="player-info">
                                         <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
@@ -944,6 +950,22 @@ const PyPoker = {
                                         avatar.style.backgroundSize = 'cover';
                                         avatar.style.backgroundPosition = 'center';
                                         avatar.textContent = ''; // 清除文字
+                                    }
+                                }
+
+                                // Update Readiness Dot
+                                const avatarContainer = seat.querySelector('.avatar-container');
+                                if (avatarContainer) {
+                                    let readinessDot = avatarContainer.querySelector('.readiness-dot');
+                                    if (!readinessDot) {
+                                        readinessDot = document.createElement('div');
+                                        readinessDot.className = 'readiness-dot';
+                                        avatarContainer.appendChild(readinessDot);
+                                    }
+                                    if (player.ready) {
+                                        readinessDot.classList.add('ready');
+                                    } else {
+                                        readinessDot.classList.remove('ready');
                                     }
                                 }
                             }

@@ -36,6 +36,7 @@ class Player:
             "name": self.name,
             "money": self.money,
             "avatar": self.avatar,
+            "ready": self.ready,
         }
 
     def take_money(self, money: float):

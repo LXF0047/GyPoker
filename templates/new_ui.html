@@ -215,11 +215,17 @@
     <script src="/static/js/new_ui.js"></script>
     <script>
         function backToNavigator() {
+            // Check if game is in progress
+            // In new_ui.js, player-controls is hidden when game starts and shown when game ends
+            const playerControls = document.getElementById('player-controls');
+            const isGameRunning = playerControls && playerControls.style.display === 'none';
+            
             // Check if player has cards (active in hand)
             const handDisplay = document.getElementById('my-hand-display');
             const hasCards = handDisplay && handDisplay.children.length > 0;
             
-            if (hasCards) {
+            // Only prevent leaving if game is running AND player has cards (is participating)
+            if (isGameRunning && hasCards) {
                 alert("当前正在游戏中，请等待本局结束后再离开。");
             } else {
                 if (confirm("确定要离开当前房间并返回大厅吗？")) {

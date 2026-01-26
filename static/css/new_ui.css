@@ -739,6 +739,25 @@ body {
     transition: all 0.3s;
 }
 
+/* Readiness Indicator Dot */
+.readiness-dot {
+    position: absolute;
+    bottom: 0.2cqmin; /* Adjust to be on the circumference */
+    right: 0.2cqmin; /* Adjust to be on the circumference */
+    width: 2cqmin;
+    height: 2cqmin;
+    border-radius: 50%;
+    background-color: #888888; /* Gray by default */
+    border: 0.1cqmin solid #333;
+    box-shadow: 0 0 0.5cqmin rgba(0,0,0,0.5);
+    z-index: 50; /* Ensure it's above other elements */
+}
+
+.readiness-dot.ready {
+    background-color: #228b22; /* Green when ready */
+    box-shadow: 0 0 0.8cqmin rgba(34, 139, 34, 0.8);
+}
+
 /* 当前行动玩家 */
 .seat.active .avatar {
     border-color: var(--accent-gold);

@@ -334,9 +334,16 @@ class GameRoom(GameSubscriber):
         try:
             self._logger.info("Activating room {}...".format(self.id))
             dealer_key = -1
+            last_readiness = {}
             while True:
                 try:
                     self.remove_inactive_players()
+
+                    # Check for readiness changes
+                    current_readiness = {p.id: p.ready for p in self._room_players.players}
+                    if current_readiness != last_readiness:
+                        self._room_event_handler.room_event("readiness-update", None, self.owner)
+                        last_readiness = current_readiness
 
                     for p in self._room_players.players:
                         if p.wants_to_start_final_10_hands and p.id == self.owner and not self.is_final_countdown:
