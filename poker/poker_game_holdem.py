@@ -106,6 +106,8 @@ class HoldemPokerGame(PokerGame):
         self._street = 0  # 当前圈数 (0: Pre-flop, 1: Flop, 2: Turn, 3: River)
         self._action_num = 0  # 当前局的动作序号
         self._pots = []  # 当前局的底池列表
+        self._hand_stats = {}  # 玩家本局统计数据
+        self._preflop_raise_count = 0  # 翻前加注次数，用于计算3-bet
 
     def __check_no_money_players(self):
         # 没钱的自动贷款
@@ -133,6 +135,15 @@ class HoldemPokerGame(PokerGame):
     def _reset_ready_state(self):
         for player in self._game_players.all:
             player._ready = False
+
+    def _showdown(self, scores):
+        """
+        执行摊牌流程，记录进入摊牌的玩家。
+        """
+        for player in self._game_players.active:
+            if player.id in self._hand_stats:
+                self._hand_stats[player.id]['wtsd'] = 1
+        super()._showdown(scores)
 
     def _add_shared_cards(self, new_shared_cards, scores):
         """
@@ -284,6 +295,46 @@ class HoldemPokerGame(PokerGame):
         ):
             self._logger.error(f"Failed to record action for player {player.id}")
 
+        # ---- 4) 统计生涯数据指标 ----
+        if player.id in self._hand_stats:
+            stats = self._hand_stats[player.id]
+
+            # VPIP: 翻前主动入池 (不含大盲 Check/Fold)
+            if self._street == 0:
+                if action_type in ["call", "bet", "raise", "all-in"]:
+                    # 盲注本身的 forced 动作不算 VPIP，除非是大盲位加注或小盲位补齐/加注
+                    if forced_action_type != "blind":
+                        stats['vpip'] = 1
+                    elif action_type in ["raise", "all-in"]:
+                        stats['vpip'] = 1
+                    elif action_type == "call" and amount > 0:
+                        # 比如小盲补齐，amount 会是 small_blind
+                        stats['vpip'] = 1
+
+            # PFR: 翻前加注
+            if self._street == 0:
+                if action_type in ["raise", "all-in"]:
+                    # 只有当它是真正的加注时（比当前需要跟的 min_bet 多）
+                    if bet > min_bet:
+                        stats['pfr'] = 1
+                        # 3-bet 追踪
+                        self._preflop_raise_count += 1
+                        if self._preflop_raise_count == 2:  # 第一次是 Open，第二次是 3-bet
+                            stats['threebet'] = 1
+
+            # 激进度统计 (Aggression Factor 相关)
+            if action_type in ["bet", "raise", "all-in"]:
+                # 如果是 all-in，根据是否大于 min_bet 判定是加注还是跟注
+                if action_type == "all-in":
+                    if bet > min_bet:
+                        stats['agg_bets'] += 1
+                    elif bet == min_bet and bet > 0:
+                        stats['agg_calls'] += 1
+                else:
+                    stats['agg_bets'] += 1
+            elif action_type == "call":
+                stats['agg_calls'] += 1
+
     def _finish_db_hand(self, pots, scores):
         """
         一手牌结束时更新数据库
@@ -412,6 +463,18 @@ class HoldemPokerGame(PokerGame):
         # DB Init
         self._street = 0
         self._action_num = 0
+        self._preflop_raise_count = 0
+        self._hand_stats = {
+            p.id: {
+                'vpip': 0,
+                'pfr': 0,
+                'threebet': 0,
+                'agg_bets': 0,
+                'agg_calls': 0,
+                'wtsd': 0,
+                'wsd': 0
+            } for p in self._game_players.all
+        }
         self._init_db_record(dealer_id)
         
         # Capture starting stacks for net calculation
@@ -494,7 +557,28 @@ class HoldemPokerGame(PokerGame):
                     # Only update stats for players who actually played (active or all-in at some point)
                     # For now update for everyone in the hand record
                     update_daily_stats(player.id, 1, net_chips)
-                    update_lifetime_stats(player.id, hands_played=1, net_chips=net_chips)
+
+                    # 生涯数据
+                    ps = self._hand_stats.get(player.id, {})
+                    # Won at Showdown: 赢了且去了摊牌
+                    wsd = 1 if (is_winner and ps.get('wtsd')) else 0
+                    
+                    # 计算 BB 增益
+                    net_bb = net_chips / self._big_blind if self._big_blind > 0 else 0
+                    
+                    update_lifetime_stats(
+                        player.id,
+                        hands_played=1,
+                        net_chips=net_chips,
+                        vpip=ps.get('vpip', 0),
+                        pfr=ps.get('pfr', 0),
+                        threebet=ps.get('threebet', 0),
+                        agg_bets=ps.get('agg_bets', 0),
+                        agg_calls=ps.get('agg_calls', 0),
+                        wtsd=ps.get('wtsd', 0),
+                        wsd=wsd,
+                        net_bb=net_bb
+                    )
 
             self._reset_ready_state()  # 重置准备状态
 

@@ -43,7 +43,8 @@ def update_daily_stats(player_id: int, hands_played: int = 0, net_chips: int = 0
 
 def update_lifetime_stats(player_id: int, hands_played: int = 0, net_chips: int = 0,
                           vpip: int = 0, pfr: int = 0, threebet: int = 0,
-                          agg_bets: int = 0, agg_calls: int = 0, wtsd: int = 0, wsd: int = 0):
+                          agg_bets: int = 0, agg_calls: int = 0, wtsd: int = 0, wsd: int = 0,
+                          net_bb: float = 0.0):
     """
     Update player's lifetime stats.
     Uses upsert logic.
@@ -70,15 +71,10 @@ def update_lifetime_stats(player_id: int, hands_played: int = 0, net_chips: int 
                          agg_calls       = agg_calls + ?,
                          wtsd_hands      = wtsd_hands + ?,
                          wsd_hands       = wsd_hands + ?,
+                         net_bb          = net_bb + ?,
                          updated_at      = datetime('now')
                      WHERE player_id = ?
-                     """, (hands_played, net_chips, vpip, pfr, threebet, agg_bets, agg_calls, wtsd, wsd, player_id))
-
-        # Calculate and update net_bb (assuming big blind is known or just tracking cumulative BB won?
-        # Actually net_bb usually requires dividing net_chips by the Big Blind of that specific game.
-        # Since we don't have BB passed here, we might skip precise net_bb or assume 10 (default).
-        # Better: pass net_bb_gain if needed. For now, let's leave net_bb as is or strictly 0 update.
-        # Ideally, caller should pass net_bb gain.
+                     """, (hands_played, net_chips, vpip, pfr, threebet, agg_bets, agg_calls, wtsd, wsd, net_bb, player_id))
 
         conn.commit()
     except sqlite3.Error as e:

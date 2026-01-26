@@ -85,10 +85,20 @@ def index():
 @app.route("/navigator")
 @login_required
 def navigator():
+    analysis_data = get_player_analysis_data(current_user.id)
+    stats = {"vpip": 0, "pfr": 0, "win_rate": 0, "hands": 0}
+
+    if analysis_data:
+        stats["vpip"] = analysis_data["tech_stats"].get("vpip", 0)
+        stats["pfr"] = analysis_data["tech_stats"].get("pfr", 0)
+        stats["win_rate"] = analysis_data["summary"].get("total_profit", 0)
+        stats["hands"] = analysis_data["summary"].get("total_hands", 0)
+
     return render_template("navigator_page.html",
                            username=current_user.username,
                            money=current_user.money,
-                           avatar=current_user.avatar)
+                           avatar=current_user.avatar,
+                           stats=stats)
 
 
 @app.route("/analysis")
