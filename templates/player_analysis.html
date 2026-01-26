@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>德州扑克技术分析面板</title>
+    <!-- Tailwind CSS -->
+    <script src="/static/js/tailwindcss.js"></script>
+    <!-- Chart.js -->
+    <script src="/static/js/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="/static/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        poker: {
+                            bg: '#0f172a', // 深蓝黑背景
+                            card: '#1e293b', // 卡片背景
+                            accent: '#10b981', // 绿色（装饰）
+                            win: '#ef4444',   // 红色（盈利）
+                            loss: '#22c55e',  // 绿色（亏损）
+                            text: '#e2e8f0', // 主要文字
+                            muted: '#94a3b8' // 次要文字
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* 热力图网格样式 */
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(13, 1fr);
+            gap: 2px;
+            aspect-ratio: 1;
+        }
+        .hand-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            color: white;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .hand-cell:hover {
+            transform: scale(1.1);
+            z-index: 10;
+            border: 1px solid white;
+        }
+        @media (max-width: 768px) {
+            .hand-cell { font-size: 0.5rem; }
+        }
+
+        /* Modal Animation */
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 0.2s, transform 0.2s; }
+        .modal-exit { opacity: 1; transform: scale(1); }
+        .modal-exit-active { opacity: 0; transform: scale(0.95); transition: opacity 0.2s, transform 0.2s; }
+
+        /* Card Animation */
+        .card-reveal { animation: flipIn 0.5s ease-out; }
+        @keyframes flipIn {
+            from { transform: rotateY(90deg); opacity: 0; }
+            to { transform: rotateY(0deg); opacity: 1; }
+        }
+
+        /* Chip/Action Animation */
+        .action-pop { animation: popUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popUp {
+            from { transform: scale(0.5) translateY(10px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        /* AI Cursor Blink */
+        .cursor-blink { animation: blink 1s step-end infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    </style>
+</head>
+<body class="bg-poker-bg text-poker-text min-h-screen relative">
+
+    <!-- 顶部导航 -->
+    <nav class="bg-poker-card border-b border-gray-700 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+        <div class="flex items-center gap-4">
+            <a href="/navigator" class="text-poker-muted hover:text-white transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span class="text-sm">返回</span>
+            </a>
+            <div class="h-6 w-[1px] bg-gray-700 mx-2"></div>
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-spade text-poker-accent text-2xl"></i>
+                <h1 class="text-xl font-bold tracking-wide">GyPoker <span class="text-poker-muted font-normal text-sm">| 个人数据分析</span></h1>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-right hidden sm:block">
+                <div class="text-sm font-bold">{{ username }}</div>
+                <div class="text-xs text-poker-muted">ID: {{ player_id }}</div>
+            </div>
+            <div class="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 flex items-center justify-center text-white font-bold">
+                {{ username[0] | upper }}
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-8">
+
+        <!-- 1. 核心概览卡片 (Summary Cards) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- 总盈利 -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg relative overflow-hidden group">
+                <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition">
+                    <i class="fa-solid fa-coins text-6xl text-yellow-500"></i>
+                </div>
+                <div class="text-poker-muted text-sm mb-1">总盈利</div>
+                <!-- 修改颜色为红色表示盈利 -->
+                <div class="text-3xl font-bold {% if analysis.summary.total_profit >= 0 %}text-poker-win{% else %}text-poker-loss{% endif %}">
+                    {% if analysis.summary.total_profit >= 0 %}+{% endif %}￥{{ analysis.summary.total_profit }}
+                </div>
+            </div>
+
+            <!-- 总手数 -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div class="text-poker-muted text-sm mb-1">总手数</div>
+                <div class="text-3xl font-bold">{{ analysis.summary.total_hands }}</div>
+                <div class="text-xs text-poker-muted mt-2">样本量: {{ "充足" if analysis.summary.total_hands > 1000 else "较少" }}</div>
+            </div>
+
+            <!-- 胜率 (BB/100) -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div class="text-poker-muted text-sm mb-1">每百手盈利 (BB/100)</div>
+                <div class="text-3xl font-bold text-blue-400">{{ analysis.summary.bb_100 }} BB</div>
+                <div class="text-xs text-poker-muted mt-2">
+                    <span class="text-blue-400">{{ "稳健盈利" if analysis.summary.bb_100 > 5 else ("略有盈余" if analysis.summary.bb_100 > 0 else "需改进") }}</span>
+                </div>
+            </div>
+
+            <!-- 最佳底池 -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div class="text-poker-muted text-sm mb-1">最大底池</div>
+                <div class="text-3xl font-bold text-yellow-500">￥{{ analysis.summary.best_pot_val }}</div>
+                <div class="text-xs text-poker-muted mt-2" id="best-pot-desc">
+                    <script>
+                        (function() {
+                            try {
+                                const desc = "{{ analysis.summary.best_pot_desc }}";
+                                // Expecting "Win with [[14,0],[13,1]]" or similar
+                                const match = desc.match(/Win with (\[.*\])/);
+                                if (match) {
+                                    const holeCards = JSON.parse(match[1]);
+                                    const ranks = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2'};
+                                    const suits = {3:'h', 2:'d', 1:'c', 0:'s'};
+                                    if (Array.isArray(holeCards) && holeCards.length === 2) {
+                                        const c1 = holeCards[0], c2 = holeCards[1];
+                                        const cardStr = `${ranks[c1[0]]||c1[0]}${suits[c1[1]]||''}${ranks[c2[0]]||c2[0]}${suits[c2[1]]||''}`;
+                                        document.write("Win with " + cardStr);
+                                    } else {
+                                        document.write(desc);
+                                    }
+                                } else {
+                                    document.write(desc);
+                                }
+                            } catch(e) { document.write("{{ analysis.summary.best_pot_desc }}"); }
+                        })();
+                    </script>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 风格仪表盘 (Style Stats HUD) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <!-- 主要图表：盈利曲线 -->
+            <div class="lg:col-span-2 bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold"><i class="fa-solid fa-chart-line mr-2 text-poker-win"></i>筹码盈亏曲线</h3>
+                    <div class="flex gap-2">
+                        <!-- Legend 颜色调整 -->
+                        <span class="text-xs flex items-center gap-1"><div class="w-3 h-3 bg-poker-win rounded-full"></div> 实际盈利</span>
+                        <!-- Placeholder for now -->
+                        <!-- <span class="text-xs flex items-center gap-1"><div class="w-3 h-3 bg-yellow-500 rounded-full"></div> 摊牌盈利</span> -->
+                    </div>
+                </div>
+                <div class="h-64">
+                    <canvas id="profitChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 风格六维图 -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg">
+                <h3 class="text-lg font-bold mb-4 text-center">玩家风格</h3>
+                <div class="h-56">
+                    <canvas id="styleRadarChart"></canvas>
+                </div>
+                <div class="text-center mt-4">
+                    <span class="inline-block px-3 py-1 bg-blue-900 text-blue-200 rounded-full text-xs border border-blue-700" id="style-tag">Analyzing...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 详细技术指标 (Technical Indicators) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- VPIP -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 text-center relative">
+                <div class="text-poker-muted text-sm uppercase tracking-wider">VPIP (入池率)</div>
+                <div class="text-4xl font-extrabold my-2 text-poker-accent" id="stat-vpip">{{ analysis.tech_stats.vpip }}%</div>
+                <div class="text-xs text-gray-400">标准范围: 18% - 28%</div>
+                <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-poker-accent" style="width: {{ analysis.tech_stats.vpip }}%"></div>
+                </div>
+                <div class="mt-2 text-xs text-poker-accent font-semibold">{{ "健康" if 18 <= analysis.tech_stats.vpip <= 28 else ("过紧" if analysis.tech_stats.vpip < 18 else "过松") }}</div>
+            </div>
+
+            <!-- PFR -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 text-center">
+                <div class="text-poker-muted text-sm uppercase tracking-wider">PFR (翻前加注)</div>
+                <div class="text-4xl font-extrabold my-2 text-blue-400" id="stat-pfr">{{ analysis.tech_stats.pfr }}%</div>
+                <div class="text-xs text-gray-400">VPIP/PFR 缺口: {{ (analysis.tech_stats.vpip - analysis.tech_stats.pfr)|round(1) }}%</div>
+                <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-400" style="width: {{ analysis.tech_stats.pfr }}%"></div>
+                </div>
+                <div class="mt-2 text-xs text-blue-400 font-semibold">{{ "激进" if analysis.tech_stats.pfr > 20 else "正常" }}</div>
+            </div>
+
+            <!-- AF -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 text-center">
+                <div class="text-poker-muted text-sm uppercase tracking-wider">AF (激进度)</div>
+                <div class="text-4xl font-extrabold my-2 text-yellow-500" id="stat-af">{{ analysis.tech_stats.af }}</div>
+                <div class="text-xs text-gray-400">建议 > 2.0</div>
+                <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-yellow-500" style="width: {{ (analysis.tech_stats.af / 5 * 100)|round }}%"></div>
+                </div>
+                <div class="mt-2 text-xs text-yellow-500 font-semibold">{{ "被动" if analysis.tech_stats.af < 1.5 else ("适中" if analysis.tech_stats.af < 3.0 else "激进") }}</div>
+            </div>
+        </div>
+
+        <!-- 4. 高级分析：起手牌热力图 & 位置分析 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- 起手牌热力图 -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold"><i class="fa-solid fa-table-cells mr-2 text-poker-accent"></i>起手牌盈利分布</h3>
+                    <select class="bg-gray-800 text-xs text-white border border-gray-600 rounded px-2 py-1 outline-none">
+                        <option>按盈利 (Profit)</option>
+                        <!-- <option>按频率 (Frequency)</option> -->
+                    </select>
+                </div>
+                <div class="flex justify-center">
+                    <div class="heatmap-grid w-full max-w-md" id="handMatrix">
+                        <!-- JS will populate this -->
+                    </div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 mt-2 px-4">
+                    <span>对角线: 口袋对子 (Pairs)</span>
+                    <span>右上: 同花 (Suited)</span>
+                    <span>左下: 非同花 (Offsuit)</span>
+                </div>
+                <div class="flex justify-center items-center gap-2 mt-3 text-xs">
+                    <span class="w-3 h-3 bg-red-500 rounded"></span> 盈利 (红)
+                    <span class="w-3 h-3 bg-gray-600 rounded ml-2"></span> 不玩/平
+                    <span class="w-3 h-3 bg-green-500 rounded ml-2"></span> 亏损 (绿)
+                </div>
+            </div>
+
+            <!-- 位置分析 -->
+            <div class="flex flex-col gap-6">
+                <!-- 位置柱状图 -->
+                <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg flex-1">
+                    <h3 class="text-lg font-bold mb-4">位置盈亏</h3>
+                    <div class="h-48">
+                        <canvas id="positionChart"></canvas>
+                    </div>
+                    <p class="text-xs text-poker-muted mt-4 text-center">
+                        提示: SB/BB 位置通常亏损是正常的，目标是减少亏损率。<br>BTN (桩位) 应该是你盈利最高的位置。
+                    </p>
+                </div>
+
+                <!-- 游戏记录列表 (简略) -->
+                <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg flex-1 overflow-hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold">最近高额手牌</h3>
+                        <span class="text-xs text-gray-500 italic"><i class="fa-regular fa-hand-pointer mr-1"></i>点击查看详情</span>
+                    </div>
+
+                    <div class="overflow-y-auto h-40 pr-2">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-poker-muted border-b border-gray-700 uppercase">
+                                <tr>
+                                    <th class="py-2">Hand</th>
+                                    <th>Pos</th>
+                                    <th>Result</th>
+                                    <th class="text-right">Pot</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-poker-text">
+                                {% for hand in analysis.top_hands %}
+                                <tr class="border-b border-gray-800 hover:bg-gray-700 transition">
+                                    <td class="py-2 font-mono text-gray-300">
+                                        <script>
+                                            (function() {
+                                                try {
+                                                    const holeCards = {{ hand.hole_cards | safe }};
+                                                    const ranks = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2'};
+                                                    const suits = {3:'h', 2:'d', 1:'c', 0:'s'};
+                                                    if (Array.isArray(holeCards) && holeCards.length === 2) {
+                                                        const c1 = holeCards[0], c2 = holeCards[1];
+                                                        document.write(`${ranks[c1[0]]||c1[0]}${suits[c1[1]]||''} ${ranks[c2[0]]||c2[0]}${suits[c2[1]]||''}`);
+                                                    } else {
+                                                        document.write(holeCards);
+                                                    }
+                                                } catch(e) { document.write("{{ hand.hole_cards }}"); }
+                                            })();
+                                        </script>
+                                    </td>
+                                    <td class="text-gray-400">{{ hand.position }}</td>
+                                    <td class="{% if hand.profit > 0 %}text-poker-win{% else %}text-poker-loss{% endif %} font-bold">
+                                        {{ "Win" if hand.profit > 0 else "Lose" }}
+                                    </td>
+                                    <td class="text-right {% if hand.profit > 0 %}text-poker-win{% else %}text-poker-loss{% endif %}">
+                                        {{ "+" if hand.profit > 0 else "" }}￥{{ hand.profit }}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-gray-500 py-4">暂无数据</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. AI 分析模块 (NEW) -->
+        <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg mt-8 relative overflow-hidden ring-1 ring-purple-900/50">
+            <!-- 背景光效 -->
+            <div class="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-purple-600 rounded-full filter blur-[80px] opacity-20 pointer-events-none"></div>
+
+            <!-- 模块头部 -->
+            <div class="flex items-center gap-4 mb-5 border-b border-gray-700 pb-4 relative z-10">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg animate-pulse-slow">
+                    <i class="fa-solid fa-robot text-white text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 tracking-wide">
+                        DeepSeek分析
+                    </h3>
+                    <p class="text-xs text-gray-400 flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                        基于本页数据实时生成评估报告
+                    </p>
+                </div>
+            </div>
+
+            <!-- 内容区域 -->
+            <div class="space-y-4 relative z-10">
+                <!-- 智能标签 -->
+                <div class="flex flex-wrap gap-2 opacity-0 transition-opacity duration-1000 delay-500" id="ai-tags">
+                    <!-- Dynamically generated tags in JS -->
+                </div>
+
+                <!-- 文字分析 -->
+                <div class="bg-gray-900/50 rounded-lg p-5 border border-gray-700/50 min-h-[120px]">
+                    <div class="text-gray-300 text-sm leading-7 font-mono" id="ai-analysis-content">
+                        <!-- 动态内容 -->
+                        <div class="flex items-center gap-3 text-gray-500 py-2">
+                            <i class="fa-solid fa-circle-notch fa-spin text-purple-500"></i>
+                            <span class="animate-pulse">正在解析玩家数据模型...</span>
+                        </div>
+                    </div>
+                    <!-- 光标 -->
+                    <span id="ai-cursor" class="inline-block w-2 h-4 bg-purple-400 align-middle ml-1 hidden cursor-blink"></span>
+                </div>
+
+                <div class="flex justify-end">
+                    <button onclick="regenerateAnalysis()" class="text-xs text-purple-400 hover:text-purple-300 transition flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-right"></i> 重新生成分析
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="text-center py-6 text-poker-muted text-sm border-t border-gray-800 mt-8">
+        <p>&copy; 2026 GyPoker Analytics 狗运牌玩家分析</p>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Inject data from Backend
+        const analysisData = {{ analysis_json | safe }};
+
+        // ============================================
+        // 1. Chart Configuration
+        // ============================================
+        
+        // Profit Chart
+        const ctxProfit = document.getElementById('profitChart').getContext('2d');
+        const profitChartData = analysisData.profit_chart || { labels: [], data: [] };
+        
+        new Chart(ctxProfit, {
+            type: 'line',
+            data: {
+                labels: profitChartData.labels,
+                datasets: [
+                    { 
+                        label: '净盈利 (Net Won)', 
+                        data: profitChartData.data, 
+                        borderColor: '#ef4444', 
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+                        tension: 0.3, 
+                        fill: true, 
+                        pointRadius: 4, 
+                        borderWidth: 2 
+                    }
+                    // Currently no SD/Non-SD data split in basic analysis
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94a3b8' } } }, scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
+        });
+
+        // Radar Chart
+        const ctxRadar = document.getElementById('styleRadarChart').getContext('2d');
+        const radarData = analysisData.radar_chart || { values: [0,0,0,0,0,0], labels: ['VPIP', 'PFR', 'AF x10', '3-Bet', 'WTSD', 'C-Bet'] };
+        
+        new Chart(ctxRadar, {
+            type: 'radar',
+            data: { 
+                labels: radarData.labels, 
+                datasets: [{ 
+                    label: 'Player Stats', 
+                    data: radarData.values, 
+                    fill: true, 
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)', 
+                    borderColor: '#10b981', 
+                    pointBackgroundColor: '#10b981', 
+                    pointBorderColor: '#fff' 
+                }] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: '#334155' }, grid: { color: '#334155' }, pointLabels: { color: '#e2e8f0' }, ticks: { display: false, min: 0 } } }, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } } }
+        });
+
+        // Update Tag
+        const vpip = analysisData.tech_stats.vpip;
+        const pfr = analysisData.tech_stats.pfr;
+        let styleTag = "未知风格";
+        if (vpip > 40) styleTag = "LAG / Loose (松凶/松弱)";
+        else if (vpip < 15) styleTag = "Nit (岩石)";
+        else if (vpip >= 15 && vpip <= 30) {
+            if (pfr > vpip * 0.7) styleTag = "TAG (紧凶型)";
+            else styleTag = "Passive (紧弱)";
+        }
+        document.getElementById('style-tag').innerText = styleTag;
+
+
+        // Position Chart
+        const ctxPos = document.getElementById('positionChart').getContext('2d');
+        const posData = analysisData.position_stats || { labels: [], values: [] };
+        
+        new Chart(ctxPos, {
+            type: 'bar',
+            data: { 
+                labels: posData.labels, 
+                datasets: [{ 
+                    label: 'Profit', 
+                    data: posData.values, 
+                    backgroundColor: c => c.raw >= 0 ? '#ef4444' : '#22c55e', 
+                    borderRadius: 4 
+                }] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
+        });
+
+        // Hand Matrix
+        const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
+        const matrixContainer = document.getElementById('handMatrix');
+        const matrixData = analysisData.hand_matrix || {};
+        
+        ranks.forEach((r1, i) => {
+            ranks.forEach((r2, j) => {
+                const cell = document.createElement('div');
+                cell.className = 'hand-cell';
+                let handText = '', key = '';
+                
+                if (i === j) { 
+                    handText = r1 + r2; 
+                    key = handText;
+                } else if (i < j) { 
+                    handText = r1 + r2 + 's'; 
+                    key = handText;
+                } else { 
+                    handText = r2 + r1 + 'o'; 
+                    key = handText;
+                }
+                
+                const value = matrixData[key] || 0;
+                
+                cell.innerText = handText;
+                
+                // Coloring based on profit/loss
+                if (value > 0) { 
+                    // Max intensity at 500 chips?
+                    const alpha = Math.min(Math.abs(value)/500, 1) * 0.8 + 0.2;
+                    cell.style.backgroundColor = `rgba(239, 68, 68, ${alpha})`; 
+                    if(value > 1000) cell.classList.add('font-bold'); 
+                } else if (value < 0) { 
+                     const alpha = Math.min(Math.abs(value)/500, 1) * 0.8 + 0.2;
+                    cell.style.backgroundColor = `rgba(34, 197, 94, ${alpha})`; 
+                } else { 
+                    cell.style.backgroundColor = '#334155'; 
+                    cell.style.color = '#64748b'; 
+                }
+                
+                cell.title = `${handText}: ${value > 0 ? '+' : ''}${value}`;
+                matrixContainer.appendChild(cell);
+            });
+        });
+
+        // ============================================
+        // 4. AI Analysis Logic
+        // ============================================
+
+        function regenerateAnalysis() {
+             const contentEl = document.getElementById('ai-analysis-content');
+             const tagsEl = document.getElementById('ai-tags');
+             const cursorEl = document.getElementById('ai-cursor');
+
+             // Reset UI
+             contentEl.innerHTML = `
+                <div class="flex items-center gap-3 text-gray-500 py-2">
+                    <i class="fa-solid fa-circle-notch fa-spin text-purple-500"></i>
+                    <span class="animate-pulse">正在解析玩家数据模型...</span>
+                </div>`;
+             tagsEl.classList.add('opacity-0');
+             cursorEl.classList.add('hidden');
+
+             // Start Generation Sequence
+             setTimeout(() => {
+                 startTypewriter();
+             }, 1000);
+        }
+
+        function startTypewriter() {
+            const contentEl = document.getElementById('ai-analysis-content');
+            const tagsEl = document.getElementById('ai-tags');
+            const cursorEl = document.getElementById('ai-cursor');
+            const stats = analysisData.tech_stats;
+
+            // Generate Tags based on real stats
+            let tagsHtml = '';
+            tagsHtml += `<span class="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-tag"></i> 风格: ${styleTag}</span>`;
+            
+            if (analysisData.summary.total_profit > 0) {
+                 tagsHtml += `<span class="px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> 盈利状态: 盈利中</span>`;
+            } else {
+                 tagsHtml += `<span class="px-3 py-1 bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-arrow-trend-down"></i> 盈利状态: 亏损中</span>`;
+            }
+
+            tagsEl.innerHTML = tagsHtml;
+            tagsEl.classList.remove('opacity-0');
+
+            // Text to generate
+            const gap = (stats.vpip - stats.pfr).toFixed(1);
+            let analysisText = `从过去${analysisData.summary.total_hands}手牌的样本来看，您的VPIP为${stats.vpip}%，PFR为${stats.pfr}%。GAP为${gap}%。`;
+            
+            if (stats.vpip > 30) {
+                analysisText += "您的入池率偏高，建议减少边缘牌的游玩，收紧范围。";
+            } else if (stats.vpip < 18) {
+                analysisText += "您打得非常紧，可能会错过一些价值，建议适当在后位放宽范围。";
+            } else {
+                analysisText += "您的入池率控制得很好，保持了这个级别的标准水平。";
+            }
+
+            if (stats.af < 1.5) {
+                analysisText += " 激进度(AF)较低，您可能过于被动，建议在听牌或持强牌时更激进地加注。";
+            } else if (stats.af > 3.5) {
+                analysisText += " 激进度较高，请注意不要过度诈唬。";
+            }
+
+            contentEl.innerHTML = '';
+            cursorEl.classList.remove('hidden');
+
+            let i = 0;
+            const speed = 30; // ms per char
+
+            function type() {
+                if (i < analysisText.length) {
+                    contentEl.innerHTML += analysisText.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                } else {
+                    cursorEl.classList.add('hidden');
+                }
+            }
+            type();
+        }
+
+        // Initialize AI analysis on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                regenerateAnalysis();
+            }, 1000);
+        });
+
+    </script>
+</body>
+</html>

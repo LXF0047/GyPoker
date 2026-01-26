@@ -900,28 +900,16 @@ body {
 } */
 
 /* 座位位置 - 10个座位环绕牌桌 */
-.seat-0 { left: 16.02%; top: 7.03%; transform: translate(-50%, -50%); }
-.seat-1 { left: 3.62%;  top: 32.62%; transform: translate(-50%, -50%); }
-.seat-2 { left: 4.55%;  top: 68.42%; transform: translate(-50%, -50%); }
-.seat-3 { left: 20.81%; top: 92.38%; transform: translate(-50%, -50%); }
-.seat-4 { left: 40.77%; top: 93.75%; transform: translate(-50%, -50%); }
-.seat-5 { left: 59.69%; top: 93.75%; transform: translate(-50%, -50%); }
-.seat-6 { left: 79.72%; top: 92.71%; transform: translate(-50%, -50%); }
-.seat-7 { left: 95.74%; top: 68.42%; transform: translate(-50%, -50%); }
-.seat-8 { left: 96.38%; top: 32.62%; transform: translate(-50%, -50%); }
-.seat-9 { left: 83.91%; top: 7.03%;  transform: translate(-50%, -50%); }
-
-/* 下注区位置 - 10个座位 */
-/*.seat-0 .bet-area { top: -8cqmin; }*/
-/*.seat-1 .bet-area { top: -2.8cqmin; right: -8cqmin; }*/
-/*.seat-2 .bet-area { top: 20%; right: -9.5cqmin; }*/
-/*.seat-3 .bet-area { top: 30%; right: -9.5cqmin; }*/
-/*.seat-4 .bet-area { bottom: -5.5cqmin; }*/
-/*.seat-5 .bet-area { bottom: -7cqmin; }*/
-/*.seat-6 .bet-area { bottom: -5.5cqmin; }*/
-/*.seat-7 .bet-area { top: 30%; left: -9.5cqmin; }*/
-/*.seat-8 .bet-area { top: 20%; left: -9.5cqmin; }*/
-/*.seat-9 .bet-area { top: -2.8cqmin; left: -8cqmin; }*/
+.seat-9 { left: 16.02%; top: 7.03%; transform: translate(-50%, -50%); }
+.seat-8 { left: 3.62%;  top: 32.62%; transform: translate(-50%, -50%); }
+.seat-7 { left: 4.55%;  top: 68.42%; transform: translate(-50%, -50%); }
+.seat-6 { left: 20.81%; top: 92.38%; transform: translate(-50%, -50%); }
+.seat-5 { left: 40.77%; top: 93.75%; transform: translate(-50%, -50%); }
+.seat-4 { left: 59.69%; top: 93.75%; transform: translate(-50%, -50%); }
+.seat-3 { left: 79.72%; top: 92.71%; transform: translate(-50%, -50%); }
+.seat-2 { left: 95.74%; top: 68.42%; transform: translate(-50%, -50%); }
+.seat-1 { left: 96.38%; top: 32.62%; transform: translate(-50%, -50%); }
+.seat-0 { left: 83.91%; top: 7.03%;  transform: translate(-50%, -50%); }
 
 /* 空座位 */
 .seat.empty .avatar {
@@ -1001,6 +989,16 @@ body {
     width: 7.6cqmin; /* Adjust size to fit height */
     height: 10.64cqmin;
     box-shadow: 0 0.5cqmin 1.5cqmin rgba(0,0,0,0.5);
+    cursor: pointer;
+}
+
+.card.is-flipping {
+    transform: scaleX(0);
+}
+
+.card.face-down > .card-corner,
+.card.face-down > .card-suit-center {
+    display: none;
 }
 
 .action-btn {
@@ -1040,9 +1038,14 @@ body {
     background-image: url('/static/images/btn/fold_btn.webp');
 }
 
-/* Check/Call 按钮 - 对应 "等待" 或 "跟注" */
-.btn-check, .btn-call-state {
+/* Call 按钮 - 对应 "跟注" */
+.btn-call-state {
     background-image: url('/static/images/btn/call_btn.webp');
+}
+
+/* Check 按钮 - 对应 "过牌" */
+.btn-check {
+    background-image: url('/static/images/btn/check_btn.webp');
 }
 
 /* Raise/Bet 按钮 - 对应 "下注" */
