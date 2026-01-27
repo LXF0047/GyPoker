@@ -8,7 +8,7 @@ IFS=$'\n\t'
 ########################
 # Configurable settings #
 ########################
-APP_HOME="/home/pypoker_v03"
+APP_HOME="/home/$(basename "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")"
 PYTHON_BIN="python3"                  # or absolute path, e.g. /usr/bin/python3
 VENV_ACTIVATE=""                      # e.g. /home/pypoker_v03/venv/bin/activate (leave empty if none)
 
