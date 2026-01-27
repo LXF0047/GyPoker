@@ -212,7 +212,7 @@
                     <canvas id="styleRadarChart"></canvas>
                 </div>
                 <div class="text-center mt-4">
-                    <span class="inline-block px-3 py-1 bg-blue-900 text-blue-200 rounded-full text-xs border border-blue-700" id="style-tag">Analyzing...</span>
+                    <span class="inline-block px-3 py-1 bg-blue-900 text-blue-200 rounded-full text-xs border border-blue-700" id="style-tag">{{ analysis.tech_stats.style }}</span>
                 </div>
             </div>
         </div>
@@ -497,19 +497,6 @@
             options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: '#334155' }, grid: { color: '#334155' }, pointLabels: { color: '#e2e8f0' }, ticks: { display: false, min: 0 } } }, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } } }
         });
 
-        // Update Tag
-        const vpip = analysisData.tech_stats.vpip;
-        const pfr = analysisData.tech_stats.pfr;
-        let styleTag = "未知风格";
-        if (vpip > 40) styleTag = "LAG / Loose (松凶/松弱)";
-        else if (vpip < 15) styleTag = "Nit (岩石)";
-        else if (vpip >= 15 && vpip <= 30) {
-            if (pfr > vpip * 0.7) styleTag = "TAG (紧凶型)";
-            else styleTag = "Passive (紧弱)";
-        }
-        document.getElementById('style-tag').innerText = styleTag;
-
-
         // Position Chart
         const ctxPos = document.getElementById('positionChart').getContext('2d');
         const posData = analysisData.position_stats || { labels: [], values: [] };
@@ -605,7 +592,7 @@
 
             // Generate Tags based on real stats
             let tagsHtml = '';
-            tagsHtml += `<span class="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-tag"></i> 风格: ${styleTag}</span>`;
+            tagsHtml += `<span class="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-tag"></i> 风格: {{ analysis.tech_stats.style }}</span>`;
             
             if (analysisData.summary.total_profit > 0) {
                  tagsHtml += `<span class="px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> 盈利状态: 盈利中</span>`;
@@ -697,11 +684,9 @@
                     </div>
 
                     <!-- Table Container (Center Content) -->
-                    <div class="flex-1 flex items-center justify-center relative min-h-[300px]">
+                    <div class="flex-1 flex items-center justify-center relative min-h-[400px]">
                          <!-- Table View -->
-                        <div class="relative bg-green-900/40 border-[6px] border-gray-700 rounded-full h-64 w-full max-w-lg flex items-center justify-center shadow-2xl scale-90 sm:scale-100">
-                             <!-- Dealer Button -->
-                            <div class="absolute text-poker-muted text-xs top-8 border border-gray-600 px-2 rounded-full bg-gray-900/50">Dealer</div>
+                        <div id="poker-table-surface" class="relative bg-green-900/40 border-[6px] border-gray-700 rounded-full h-64 w-full max-w-lg flex items-center justify-center shadow-2xl scale-90 sm:scale-100">
                             
                             <!-- Center Area: Community Cards & Pot -->
                             <div class="text-center z-10">
@@ -712,25 +697,9 @@
                                 </div>
                             </div>
 
-                            <!-- Villain (Top) -->
-                            <div class="absolute top-[-40px] flex flex-col items-center z-20">
-                                <div class="bg-gray-800 p-2 rounded-xl border-2 border-gray-600 shadow-xl relative w-24 mb-2">
-                                     <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gray-700 text-[10px] text-gray-300 px-2 rounded-full whitespace-nowrap border border-gray-600 max-w-[120px] truncate" id="villain-name-label">Opponent</div>
-                                    <div class="flex gap-1 justify-center" id="villain-cards">
-                                        <span class="bg-blue-200 w-6 h-8 rounded opacity-50 border border-blue-300"></span>
-                                        <span class="bg-blue-200 w-6 h-8 rounded opacity-50 border border-blue-300"></span>
-                                    </div>
-                                </div>
-                                <div id="villain-action" class="hidden action-pop relative z-30"></div>
-                            </div>
-
-                            <!-- Hero (Bottom) -->
-                            <div class="absolute bottom-[-40px] flex flex-col items-center z-20">
-                                <div id="hero-action" class="mb-2 hidden action-pop relative z-30"></div>
-                                <div class="bg-gray-800 p-2 rounded-xl border-2 border-yellow-500 shadow-xl relative w-24">
-                                    <div class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-yellow-600 text-[10px] text-white px-2 rounded-full whitespace-nowrap border border-yellow-400 font-bold shadow max-w-[120px] truncate" id="hero-name-label">Hero</div>
-                                    <div class="flex gap-1 justify-center" id="hero-cards"></div>
-                                </div>
+                            <!-- Players Container (Dynamic) -->
+                            <div id="players-container" class="absolute inset-0 pointer-events-none">
+                                <!-- Dynamic Players will be injected here -->
                             </div>
                         </div>
                     </div>
@@ -787,8 +756,9 @@
             content.classList.add('scale-100');
             
             document.getElementById('replayTitle').innerText = `Hand #${hand.hand_id} Replay`;
-            document.getElementById('hero-name-label').innerText = replayState.heroName;
-            document.getElementById('villain-name-label').innerText = "Opponent"; // Reset
+            
+            // Setup Players
+            setupPlayers(hand.players);
             
             // Generate Action Log
             generateActionLog(replayState.steps);
@@ -798,6 +768,65 @@
             
             // Focus for keyboard support
             content.focus();
+        }
+
+        function setupPlayers(players) {
+            const container = document.getElementById('players-container');
+            container.innerHTML = '';
+            
+            if (!players || players.length === 0) return;
+
+            // Sort players by seat_no
+            const sortedPlayers = [...players].sort((a, b) => a.seat_no - b.seat_no);
+            const totalPlayers = sortedPlayers.length;
+            
+            // Hero usually at the bottom for best view
+            // Let's find hero's index and rotate so hero is at index that corresponds to PI/2
+            const heroIndex = sortedPlayers.findIndex(p => p.player_id === replayState.playerId);
+            
+            sortedPlayers.forEach((player, index) => {
+                // To keep hero at bottom, we can offset the index
+                // If heroIndex is 2 and total is 6. 
+                // We want index 2 to be at angle PI/2.
+                // Angle = (index - heroIndex) / total * 2PI + PI/2
+                const angle = ((index - heroIndex) / totalPlayers) * 2 * Math.PI + (Math.PI / 2);
+                
+                // Ellipse radius (percentage of table surface)
+                // The surface is h-64 (256px), w-full max-w-lg (512px)
+                // Using 42% for rx and 45% for ry to keep them inside but near edge
+                const rx = 42; 
+                const ry = 48; 
+                
+                const x = 50 + rx * Math.cos(angle);
+                const y = 50 + ry * Math.sin(angle);
+                
+                const isHero = player.player_id === replayState.playerId;
+                const isDealer = player.position === 'BTN';
+
+                const playerEl = document.createElement('div');
+                playerEl.className = `absolute flex flex-col items-center z-20 transition-all duration-500 pointer-events-auto`;
+                playerEl.style.left = `${x}%`;
+                playerEl.style.top = `${y}%`;
+                playerEl.style.transform = `translate(-50%, -50%)`;
+                
+                playerEl.innerHTML = `
+                    <div id="player-action-${player.player_id}" class="mb-1 hidden action-pop relative z-30"></div>
+                    <div class="bg-gray-800 p-1 rounded-lg border-2 ${isHero ? 'border-yellow-500' : 'border-gray-600'} shadow-xl relative w-16 sm:w-20">
+                        ${isDealer ? '<div class="absolute -top-2 -right-2 bg-white text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black border border-gray-400 shadow-sm z-40">D</div>' : ''}
+                        <div class="absolute -top-3 left-1/2 -translate-x-1/2 ${isHero ? 'bg-yellow-600' : 'bg-gray-700'} text-[8px] text-white px-1.5 rounded-full whitespace-nowrap border ${isHero ? 'border-yellow-400 font-bold' : 'border-gray-600'} max-w-[70px] truncate">
+                            ${player.name}
+                        </div>
+                        <div class="flex gap-0.5 justify-center min-h-[28px]" id="player-cards-${player.player_id}">
+                            <div class="bg-blue-600 w-4 h-6 rounded border border-blue-400"></div>
+                            <div class="bg-blue-600 w-4 h-6 rounded border border-blue-400"></div>
+                        </div>
+                        <div class="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-black/80 text-[7px] text-gray-400 px-1 rounded border border-gray-700">
+                            ${player.position || ''}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(playerEl);
+            });
         }
 
         function closeReplay() {
@@ -904,9 +933,9 @@
             const stepIndex = replayState.currentStep;
             const steps = replayState.steps;
             const currentStepData = steps[stepIndex];
+            const hand = replayState.hand;
             
             // 1. Determine Visible Board & Pot
-            // We need to find the last 'deal' or 'action' step up to this point to know the board/pot
             let visibleBoard = [];
             let currentPot = 0;
             let activePhase = 0; // 0=Pre, 1=Flop, 2=Turn, 3=River, 4=Result
@@ -951,57 +980,82 @@
                 boardContainer.appendChild(createCardEl(card));
             });
 
-            // Render Hero Cards (Always visible)
-            const heroContainer = document.getElementById('hero-cards');
-            heroContainer.innerHTML = '';
-            const heroCards = steps[0].hole_cards || [];
-            heroCards.forEach(card => {
-                heroContainer.appendChild(createCardEl(card));
+            // Reset all player cards and actions
+            hand.players.forEach(player => {
+                const cardContainer = document.getElementById(`player-cards-${player.player_id}`);
+                const actionEl = document.getElementById(`player-action-${player.player_id}`);
+                
+                if (cardContainer) {
+                    cardContainer.innerHTML = '';
+                    // Default back of cards
+                    if (player.player_id === replayState.playerId && steps[0].hole_cards) {
+                        steps[0].hole_cards.forEach(c => cardContainer.appendChild(createCardEl(c, true)));
+                    } else if (activePhase === 4 && player.hole_cards) {
+                        // Showdown: show all cards if we have them in data
+                        const cards = parseCards(player.hole_cards);
+                        if (cards && cards.length >= 2) {
+                            cards.forEach(c => cardContainer.appendChild(createCardEl(c, true)));
+                        } else {
+                            showCardBacks(cardContainer);
+                        }
+                    } else {
+                        showCardBacks(cardContainer);
+                    }
+                }
+                
+                if (actionEl) {
+                    actionEl.className = "mb-1 hidden action-pop relative z-30";
+                    actionEl.innerHTML = '';
+                }
             });
 
-            // Handle Action Bubbles
-            const heroActionEl = document.getElementById('hero-action');
-            const villainActionEl = document.getElementById('villain-action');
-            const villainNameEl = document.getElementById('villain-name-label');
-            
-            heroActionEl.className = "mb-2 hidden action-pop relative z-30";
-            villainActionEl.className = "hidden action-pop relative z-30";
+            // Helper for backs
+            function showCardBacks(container) {
+                container.innerHTML = `
+                    <div class="bg-blue-600 w-4 h-6 rounded border border-blue-400 flex items-center justify-center">
+                        <div class="w-full h-full opacity-20 bg-[radial-gradient(circle,white_1px,transparent_1px)] [background-size:4px_4px]"></div>
+                    </div>
+                    <div class="bg-blue-600 w-4 h-6 rounded border border-blue-400 flex items-center justify-center">
+                        <div class="w-full h-full opacity-20 bg-[radial-gradient(circle,white_1px,transparent_1px)] [background-size:4px_4px]"></div>
+                    </div>
+                `;
+            }
 
+            // Show current action
             if (currentStepData.type === 'action') {
-                const isHero = currentStepData.player_id === replayState.playerId;
-                const targetEl = isHero ? heroActionEl : villainActionEl;
-                
-                // Update Villain Name if it's their action
-                if (!isHero && currentStepData.name) {
-                    villainNameEl.innerText = currentStepData.name;
+                const actionEl = document.getElementById(`player-action-${currentStepData.player_id}`);
+                if (actionEl) {
+                    let icon = "";
+                    const act = currentStepData.action.toLowerCase();
+                    const actionColor = getActionColor(currentStepData.action).split(' ')[0];
+                    
+                    if (act.includes('check')) { icon = '<i class="fa-solid fa-check"></i>'; }
+                    else if (act.includes('call')) { icon = '<i class="fa-solid fa-phone"></i>'; }
+                    else if (act.includes('bet')) { icon = '<i class="fa-solid fa-coins"></i>'; }
+                    else if (act.includes('raise')) { icon = '<i class="fa-solid fa-arrow-up"></i>'; }
+                    else if (act.includes('fold')) { icon = '<i class="fa-solid fa-ban"></i>'; }
+                    else if (act.includes('all')) { icon = '<i class="fa-solid fa-bolt"></i>'; }
+
+                    actionEl.innerHTML = `<span class="bg-gray-900 text-white px-2 py-0.5 rounded border border-gray-600 shadow-lg flex items-center gap-1.5 text-[10px]">
+                        <span class="${actionColor}">${icon}</span>
+                        <span class="font-bold uppercase">${currentStepData.action}</span>
+                        ${currentStepData.amount ? `<span class="text-yellow-500 font-mono">￥${currentStepData.amount}</span>` : ''}
+                    </span>`;
+                    actionEl.classList.remove('hidden');
                 }
-
-                // Color mapping
-                let colorClass = "text-white";
-                let icon = "";
-                const act = currentStepData.action.toLowerCase();
-                
-                if (act.includes('check')) { icon = '<i class="fa-solid fa-check text-gray-400"></i>'; }
-                else if (act.includes('call')) { icon = '<i class="fa-solid fa-phone text-blue-400"></i>'; }
-                else if (act.includes('bet')) { icon = '<i class="fa-solid fa-coins text-yellow-500"></i>'; }
-                else if (act.includes('raise')) { icon = '<i class="fa-solid fa-arrow-up text-red-500"></i>'; }
-                else if (act.includes('fold')) { icon = '<i class="fa-solid fa-ban text-gray-500"></i>'; }
-                else if (act.includes('all')) { icon = '<i class="fa-solid fa-bolt text-purple-500"></i>'; }
-
-                targetEl.innerHTML = `<span class="bg-gray-900 text-white px-3 py-1 rounded-lg text-xs border border-gray-600 shadow-lg flex items-center gap-2">
-                    ${icon} 
-                    <span class="font-bold">${currentStepData.action}</span>
-                    ${currentStepData.amount ? `<span class="text-yellow-500 font-mono">￥${currentStepData.amount}</span>` : ''}
-                </span>`;
-                
-                targetEl.classList.remove('hidden');
             } else if (currentStepData.type === 'result') {
-                // Show Result on Hero
-                heroActionEl.innerHTML = `<span class="bg-gray-900 text-white px-3 py-1 rounded-lg text-xs border ${currentStepData.profit > 0 ? 'border-green-500' : 'border-red-500'} shadow-lg flex items-center gap-2">
-                    <i class="fa-solid ${currentStepData.profit > 0 ? 'fa-trophy text-green-500' : 'fa-skull text-red-500'}"></i>
-                    <span class="font-bold ${currentStepData.profit > 0 ? 'text-green-500' : 'text-red-500'}">${currentStepData.profit > 0 ? 'WIN' : 'LOSE'} ￥${Math.abs(currentStepData.profit)}</span>
-                </span>`;
-                heroActionEl.classList.remove('hidden');
+                // For simplicity, find the winner(s) and show result
+                // Actually, the current player's profit is known from currentStepData.profit
+                // Let's show it on the current player's position
+                const heroActionEl = document.getElementById(`player-action-${replayState.playerId}`);
+                if (heroActionEl) {
+                    const isWin = currentStepData.profit > 0;
+                    heroActionEl.innerHTML = `<span class="bg-gray-900 text-white px-2 py-0.5 rounded border ${isWin ? 'border-green-500' : 'border-red-500'} shadow-lg flex items-center gap-1.5 text-[10px]">
+                        <i class="fa-solid ${isWin ? 'fa-trophy text-green-500' : 'fa-skull text-red-500'}"></i>
+                        <span class="font-bold ${isWin ? 'text-green-500' : 'text-red-500'}">${isWin ? 'WIN' : 'LOSE'} ￥${Math.abs(currentStepData.profit)}</span>
+                    </span>`;
+                    heroActionEl.classList.remove('hidden');
+                }
             }
 
             // Highlight Log Item
@@ -1031,7 +1085,7 @@
             return cards || [];
         }
 
-        function createCardEl(card) {
+        function createCardEl(card, isSmall = false) {
              let rank, suit;
             if (Array.isArray(card)) {
                  rank = card[0];
@@ -1051,8 +1105,13 @@
             }[suit] || { icon: '?', color: 'text-gray-500' };
 
             const el = document.createElement('div');
-            el.className = "bg-white w-8 h-12 md:w-10 md:h-14 rounded shadow-md border border-gray-300 flex flex-col items-center justify-center leading-none select-none card-reveal";
-            el.innerHTML = `<span class="text-xs md:text-sm font-black ${suitData.color}">${rankStr}</span><span class="text-sm md:text-lg ${suitData.color}">${suitData.icon}</span>`;
+            if (isSmall) {
+                el.className = "bg-white w-5 h-7 rounded border border-gray-300 flex flex-col items-center justify-center leading-none select-none card-reveal";
+                el.innerHTML = `<span class="text-[8px] font-black ${suitData.color}">${rankStr}</span><span class="text-[10px] ${suitData.color}">${suitData.icon}</span>`;
+            } else {
+                el.className = "bg-white w-8 h-12 md:w-10 md:h-14 rounded shadow-md border border-gray-300 flex flex-col items-center justify-center leading-none select-none card-reveal";
+                el.innerHTML = `<span class="text-xs md:text-sm font-black ${suitData.color}">${rankStr}</span><span class="text-sm md:text-lg ${suitData.color}">${suitData.icon}</span>`;
+            }
             return el;
         }
 

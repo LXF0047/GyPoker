@@ -5,7 +5,7 @@
 # @File : debug_utils.py
 # @desc : Debug utilities for managing the game database
 
-import sqlite3
+import pysqlite3 as sqlite3
 import os
 from werkzeug.security import generate_password_hash
 

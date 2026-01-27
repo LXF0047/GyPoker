@@ -1,5 +1,4 @@
-import sqlite3
-from pathlib import Path
+import pysqlite3 as sqlite3
 
 # 修正后的 DDL
 DDL = """

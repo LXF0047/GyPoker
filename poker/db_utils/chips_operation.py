@@ -5,7 +5,7 @@
 # @File : chips_operation.py
 # @desc : Wallet and chips operations
 
-import sqlite3
+import pysqlite3 as sqlite3
 import logging
 from .base import get_db_connection
 

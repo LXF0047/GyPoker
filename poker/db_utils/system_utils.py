@@ -5,7 +5,7 @@
 # @File : system_utils.py
 # @desc : System configuration and utilities
 
-import sqlite3
+import pysqlite3 as sqlite3
 import logging
 import threading
 import time

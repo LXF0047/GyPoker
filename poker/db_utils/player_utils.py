@@ -5,7 +5,7 @@
 # @File : player_utils.py
 # @desc : Player management database operations
 
-import sqlite3
+import pysqlite3 as sqlite3
 import logging
 from typing import Optional, Dict, Any
 from .base import get_db_connection

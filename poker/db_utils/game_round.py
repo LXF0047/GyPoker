@@ -5,7 +5,7 @@
 # @File : game_round.py
 # @desc : Game round and hand management
 
-import sqlite3
+import pysqlite3 as sqlite3
 import logging
 from typing import Optional
 from .base import get_db_connection

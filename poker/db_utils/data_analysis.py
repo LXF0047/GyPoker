@@ -5,7 +5,7 @@
 # @File : data_analysis.py
 # @desc : Data analysis and statistics operations
 
-import sqlite3
+import pysqlite3 as sqlite3
 import logging
 import json
 from datetime import date, datetime
@@ -158,7 +158,11 @@ def get_player_analysis_data(player_id: int):
             pfr = round((stats["pfr_hands"] / stats["hands_played"] * 100), 1) if stats["hands_played"] > 0 else 0
 
             # AF = (Bets + Raises) / Calls
-            af = round(stats["agg_bets_raises"] / stats["agg_calls"], 1) if stats["agg_calls"] > 0 else 0
+            if stats["agg_calls"] > 0:
+                af = round(stats["agg_bets_raises"] / stats["agg_calls"], 1)
+            else:
+                # If calls are 0 but we have bets/raises, AF is infinite. Use a cap or distinct value.
+                af = 0 if stats["agg_bets_raises"] == 0 else 99.9
 
             data["tech_stats"]["vpip"] = vpip
             data["tech_stats"]["pfr"] = pfr
@@ -178,10 +182,26 @@ def get_player_analysis_data(player_id: int):
                 "values": [vpip, pfr, af * 10, three_bet, wtsd, 50],  # Scaling AF by 10 for radar, C-Bet placeholder 50
                 "labels": ['VPIP', 'PFR', 'AF x10', '3-Bet', 'WTSD', 'C-Bet']
             }
+
+            # Determine Player Style (Moved from Frontend)
+            style_tag = "Unknown"
+            if vpip > 40:
+                style_tag = "LAG / Loose (松凶/松弱)"
+            elif vpip < 15:
+                style_tag = "Nit (岩石)"
+            else:
+                # Cover range 15 <= vpip <= 40
+                if pfr > vpip * 0.7:
+                    style_tag = "TAG (紧凶型)" if vpip <= 30 else "LAG (松凶型)"
+                else:
+                    style_tag = "Passive (紧弱)" if vpip <= 30 else "Loose Passive (松弱)"
+            
+            data["tech_stats"]["style"] = style_tag
+
         else:
             # Defaults if no stats
             data["summary"] = {"total_hands": 0, "total_profit": 0, "bb_100": 0}
-            data["tech_stats"] = {"vpip": 0, "pfr": 0, "af": 0}
+            data["tech_stats"] = {"vpip": 0, "pfr": 0, "af": 0, "style": "New Player"}
             data["radar_chart"] = {"values": [0, 0, 0, 0, 0, 0], "labels": []}
 
         # 2. Best Pot
@@ -362,6 +382,26 @@ def get_player_analysis_data(player_id: int):
         for row in top_hands_rows:
             hand_id = row["id"]
             
+            # Fetch all players for this hand to show in replay
+            hp_cursor = conn.execute("""
+                SELECT hp.player_id, hp.seat_no, hp.position_name, hp.hole_cards,
+                       COALESCE(p.nickname, p.username) as name
+                FROM hand_players hp
+                JOIN players p ON hp.player_id = p.id
+                WHERE hp.hand_id = ?
+                ORDER BY hp.seat_no ASC
+            """, (hand_id,))
+            
+            players_in_hand = []
+            for hp in hp_cursor.fetchall():
+                players_in_hand.append({
+                    "player_id": hp["player_id"],
+                    "seat_no": hp["seat_no"],
+                    "position": hp["position_name"],
+                    "name": hp["name"],
+                    "hole_cards": hp["hole_cards"] 
+                })
+
             # Fetch actions for this hand
             ac_cursor = conn.execute("""
                 SELECT ha.street, ha.action_type, ha.amount, ha.player_id, 
@@ -390,7 +430,8 @@ def get_player_analysis_data(player_id: int):
                 "result": "Win" if row["net_chips"] > 0 else "Lose",
                 "profit": row["net_chips"],
                 "pot": row["total_pot"],
-                "actions": actions
+                "actions": actions,
+                "players": players_in_hand
             })
             
         data["top_hands"] = top_hands
