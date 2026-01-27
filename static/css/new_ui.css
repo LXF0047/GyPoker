@@ -1455,6 +1455,11 @@ input[type=range]::-webkit-slider-thumb:hover {
     filter: grayscale(100%);
 }
 
+.seat.fold .hand-cards {
+    opacity: 0.4;
+    filter: grayscale(100%);
+}
+
 .seat.fold .player-info {
     opacity: 0.5;
 }
