@@ -931,6 +931,50 @@ body {
 .seat-1 { left: 96.38%; top: 32.62%; transform: translate(-50%, -50%); }
 .seat-0 { left: 83.91%; top: 7.03%;  transform: translate(-50%, -50%); }
 
+/* Seat 1 specific adjustments */
+.seat-1 .readiness-dot {
+    right: auto;
+    left: 0.2cqmin;
+}
+
+.seat-1 .hand-cards {
+    left: auto;
+    right: -5cqmin;
+}
+
+/* Seat 2 specific adjustments */
+.seat-2 .readiness-dot {
+    right: auto;
+    left: 0.2cqmin;
+}
+
+.seat-2 .hand-cards {
+    left: auto;
+    right: -5cqmin;
+}
+
+/* Seat 7 specific adjustments */
+.seat-7 .readiness-dot {
+    left: auto;
+    right: 0.2cqmin;
+}
+
+.seat-7 .hand-cards {
+    right: auto;
+    left: -5cqmin;
+}
+
+/* Seat 8 specific adjustments */
+.seat-8 .readiness-dot {
+    left: auto;
+    right: 0.2cqmin;
+}
+
+.seat-8 .hand-cards {
+    right: auto;
+    left: -5cqmin;
+}
+
 /* 空座位 */
 .seat.empty .avatar {
     border: 0.3cqmin dashed #444;
