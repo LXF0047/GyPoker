@@ -572,14 +572,12 @@ const PyPoker = {
         updateCurrentPlayerCards: function(cards, score) {
             const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
             const seat = document.querySelector(`.seat[data-player-id="${currentPlayerId}"]`);
+            let seatCardsDiv = null;
+
             if (seat) {
-                const cardsDiv = seat.querySelector('.hand-cards');
-                if (cardsDiv) {
-                    cardsDiv.innerHTML = '';
-                    for (let i in cards) {
-                        // 修改此处: 传入 'small' 参数以调整当前玩家座位上手牌的大小
-                        cardsDiv.innerHTML += PyPoker.Game.createCard(cards[i][0], cards[i][1], 'small');
-                    }
+                seatCardsDiv = seat.querySelector('.hand-cards');
+                if (seatCardsDiv) {
+                    seatCardsDiv.innerHTML = '';
                 }
             }
             
@@ -587,14 +585,30 @@ const PyPoker = {
             const myHandDisplay = document.getElementById('my-hand-display');
             if (myHandDisplay) {
                 myHandDisplay.innerHTML = '';
-                for (let i in cards) {
+            }
+
+            for (let i = 0; i < cards.length; i++) {
+                // 1. 创建并添加座位上的手牌
+                let seatCardEl = null;
+                if (seatCardsDiv) {
+                    const tempWrapperSeat = document.createElement('div');
+                    tempWrapperSeat.innerHTML = PyPoker.Game.createCard(cards[i][0], cards[i][1], 'small');
+                    seatCardEl = tempWrapperSeat.firstElementChild;
+                    seatCardsDiv.appendChild(seatCardEl);
+                }
+
+                // 2. 创建并添加操作栏的手牌
+                if (myHandDisplay) {
                     const tempWrapper = document.createElement('div');
                     tempWrapper.innerHTML = PyPoker.Game.createCard(cards[i][0], cards[i][1]);
                     const cardEl = tempWrapper.firstElementChild;
                     
-                    // 点击翻转手牌
+                    // 点击翻转手牌 (同时翻转座位上的对应手牌)
                     cardEl.addEventListener('click', function() {
                         PyPoker.Game.toggleCardFlip(this);
+                        if (seatCardEl) {
+                            PyPoker.Game.toggleCardFlip(seatCardEl);
+                        }
                     });
                     
                     myHandDisplay.appendChild(cardEl);
