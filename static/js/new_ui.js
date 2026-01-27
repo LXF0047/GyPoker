@@ -1073,7 +1073,8 @@ const PyPoker = {
                     const actionMap = {
                         'yanpai': '我要验牌',
                         'meiwenti': '牌没有问题',
-                        'kaipai': '来，开牌'
+                        'kaipai': '来，开牌',
+                        'capixie': '给我擦皮鞋'
                     };
                     if (actionMap[data.action]) {
                         PyPoker.Game.showInteractionBubble(data.sender_id, actionMap[data.action]);
@@ -1243,7 +1244,8 @@ function sendInteraction(action) {
                 const actionMap = {
                     'yanpai': '我要验牌',
                     'meiwenti': '牌没有问题',
-                    'kaipai': '来，开牌'
+                    'kaipai': '来，开牌',
+                    'capixie': '给我擦皮鞋'
                 };
                 btn.textContent = actionMap[action];
             } else {
