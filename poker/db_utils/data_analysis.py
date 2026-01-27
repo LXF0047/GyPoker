@@ -356,16 +356,43 @@ def get_player_analysis_data(player_id: int):
                               ORDER BY ABS(hp.net_chips) DESC -- Biggest wins OR losses
                               LIMIT 5
                               """, (player_id,))
+        top_hands_rows = cursor.fetchall()
         top_hands = []
-        for row in cursor.fetchall():
+        
+        for row in top_hands_rows:
+            hand_id = row["id"]
+            
+            # Fetch actions for this hand
+            ac_cursor = conn.execute("""
+                SELECT ha.street, ha.action_type, ha.amount, ha.player_id, 
+                       COALESCE(p.nickname, p.username) as name
+                FROM hand_actions ha
+                LEFT JOIN players p ON ha.player_id = p.id
+                WHERE ha.hand_id = ?
+                ORDER BY ha.action_num ASC
+            """, (hand_id,))
+            
+            actions = []
+            for ac in ac_cursor.fetchall():
+                actions.append({
+                    "street": ac["street"],
+                    "action": ac["action_type"],
+                    "amount": ac["amount"],
+                    "player_id": ac["player_id"],
+                    "name": ac["name"]
+                })
+
             top_hands.append({
-                "hand_id": row["id"],
+                "hand_id": hand_id,
                 "hole_cards": row["hole_cards"],
+                "board_cards": row["board_cards"],
                 "position": row["position_name"],
                 "result": "Win" if row["net_chips"] > 0 else "Lose",
                 "profit": row["net_chips"],
-                "pot": row["total_pot"]
+                "pot": row["total_pot"],
+                "actions": actions
             })
+            
         data["top_hands"] = top_hands
 
         return data
