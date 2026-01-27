@@ -52,6 +52,7 @@ class GameServerRedis(GameServer):
             raise MessageFormatError(attribute="player.id", desc="Missing attribute")
         except ValueError:
             raise MessageFormatError(attribute="player.id", desc="Invalid player id")
+
         # player name
         try:
             player_name = str(message["player"]["name"])
@@ -59,6 +60,7 @@ class GameServerRedis(GameServer):
             raise MessageFormatError(attribute="player.name", desc="Missing attribute")
         except ValueError:
             raise MessageFormatError(attribute="player.name", desc="Invalid player name")
+
         # player money
         try:
             player_money = float(message["player"]["money"])
@@ -67,14 +69,7 @@ class GameServerRedis(GameServer):
         except ValueError:
             raise MessageFormatError(attribute="player.money",
                                      desc="'{}' is not a number".format(message["player"]["money"]))
-        # player loan (loan是借款次数，应该是整数)
-        try:
-            player_loan = int(message["player"]["loan"])
-        except KeyError:
-            raise MessageFormatError(attribute="player.loan", desc="Missing attribute")
-        except ValueError:
-            raise MessageFormatError(attribute="player.loan",
-                                     desc="'{}' is not a valid integer".format(message["player"]["loan"]))
+
         # player avatar
         try:
             player_avatar = message["player"].get("avatar")
@@ -102,7 +97,6 @@ class GameServerRedis(GameServer):
             id=player_id,
             name=player_name,
             money=player_money,
-            loan=player_loan,
             avatar=player_avatar,
             ready=False
         )

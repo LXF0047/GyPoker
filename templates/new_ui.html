@@ -114,6 +114,11 @@
                     <span class="game-info-label">房主:</span>
                     <span id="room-owner-name" class="game-info-value">-</span>
                 </div>
+                <div class="game-info-item">
+                    <button onclick="backToNavigator()" style="background: rgba(185, 28, 28, 0.6); color: #fecaca; border: 1px solid #ef4444; border-radius: 4px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: background 0.3s;" onmouseover="this.style.background='rgba(153, 27, 27, 0.8)'" onmouseout="this.style.background='rgba(185, 28, 28, 0.6)'">
+                        离开
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -200,7 +205,6 @@
                     <span id="status-indicator" class="status-indicator"></span>
                     <input type="button" id="ready-btn" class="control-btn" value="Ready">
                     <input type="button" id="last-10-hands-btn" class="control-btn owner-only" value="最后10把" style="display: none;">
-                    <input type="button" id="reset-scores-btn" class="control-btn owner-only" value="清空积分" style="display: none;">
                     <span id="hand-countdown-display" class="countdown-display" style="display: none;"></span>
                 </div>
             </div>
@@ -208,5 +212,26 @@
     </div>
 
     <script src="/static/js/new_ui.js"></script>
+    <script>
+        function backToNavigator() {
+            // Check if game is in progress
+            // In new_ui.js, player-controls is hidden when game starts and shown when game ends
+            const playerControls = document.getElementById('player-controls');
+            const isGameRunning = playerControls && playerControls.style.display === 'none';
+            
+            // Check if player has cards (active in hand)
+            const handDisplay = document.getElementById('my-hand-display');
+            const hasCards = handDisplay && handDisplay.children.length > 0;
+            
+            // Only prevent leaving if game is running AND player has cards (is participating)
+            if (isGameRunning && hasCards) {
+                alert("当前正在游戏中，请等待本局结束后再离开。");
+            } else {
+                if (confirm("确定要离开当前房间并返回大厅吗？")) {
+                    window.location.href = "/navigator";
+                }
+            }
+        }
+    </script>
 </body>
 </html>

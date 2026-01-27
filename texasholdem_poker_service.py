@@ -5,7 +5,6 @@ import os
 from poker.game_server_redis import GameServerRedis
 from poker.game_room import GameRoomFactory
 from poker.poker_game_holdem import HoldemPokerGameFactory
-from poker.database import start_daily_settlement_scheduler, create_total_scores_table
 
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 
@@ -13,13 +12,7 @@ os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG if 'DEBUG' in os.environ else logging.INFO)
     logger = logging.getLogger()
-
-    # 创建total_scores表（如果不存在）
-    create_total_scores_table()
     
-    # 启动每日结算定时任务
-    start_daily_settlement_scheduler()
-
     redis_url = os.environ["REDIS_URL"]
     redis = redis.from_url(redis_url)
 

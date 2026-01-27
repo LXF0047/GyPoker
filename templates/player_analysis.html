@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>德州扑克技术分析面板</title>
+    <!-- Tailwind CSS -->
+    <script src="/static/js/tailwindcss.js"></script>
+    <!-- Chart.js -->
+    <script src="/static/js/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="/static/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        poker: {
+                            bg: '#0f172a', // 深蓝黑背景
+                            card: '#1e293b', // 卡片背景
+                            accent: '#10b981', // 绿色（装饰）
+                            win: '#ef4444',   // 红色（盈利）
+                            loss: '#22c55e',  // 绿色（亏损）
+                            text: '#e2e8f0', // 主要文字
+                            muted: '#94a3b8' // 次要文字
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* 热力图网格样式 */
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(13, 1fr);
+            gap: 2px;
+            aspect-ratio: 1;
+        }
+        .hand-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            color: white;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .hand-cell:hover {
+            transform: scale(1.1);
+            z-index: 10;
+            border: 1px solid white;
+        }
+        @media (max-width: 768px) {
+            .hand-cell { font-size: 0.5rem; }
+        }
+
+        /* Modal Animation */
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 0.2s, transform 0.2s; }
+        .modal-exit { opacity: 1; transform: scale(1); }
+        .modal-exit-active { opacity: 0; transform: scale(0.95); transition: opacity 0.2s, transform 0.2s; }
+
+        /* Card Animation */
+        .card-reveal { animation: flipIn 0.5s ease-out; }
+        @keyframes flipIn {
+            from { transform: rotateY(90deg); opacity: 0; }
+            to { transform: rotateY(0deg); opacity: 1; }
+        }
+
+        /* Chip/Action Animation */
+        .action-pop { animation: popUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes popUp {
+            from { transform: scale(0.5) translateY(10px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        /* AI Cursor Blink */
+        .cursor-blink { animation: blink 1s step-end infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    </style>
+</head>
+<body class="bg-poker-bg text-poker-text min-h-screen relative">
+
+    <!-- 顶部导航 -->
+    <nav class="bg-poker-card border-b border-gray-700 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+        <div class="flex items-center gap-4">
+            <a href="/navigator" class="text-poker-muted hover:text-white transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span class="text-sm">返回</span>
+            </a>
+            <div class="h-6 w-[1px] bg-gray-700 mx-2"></div>
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-spade text-poker-accent text-2xl"></i>
+                <h1 class="text-xl font-bold tracking-wide">GyPoker <span class="text-poker-muted font-normal text-sm">| 个人数据分析</span></h1>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="text-right hidden sm:block">
+                <div class="text-sm font-bold">{{ username }}</div>
+                <div class="text-xs text-poker-muted">ID: {{ player_id }}</div>
+            </div>
+            <div class="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-blue-400 flex items-center justify-center text-white font-bold">
+                {{ username[0] | upper }}
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-8">
+
+        <!-- 1. 核心概览卡片 (Summary Cards) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- 总盈利 -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg relative overflow-hidden group">
+                <div class="absolute right-0 top-0 p-4 opacity-10 group-hover:opacity-20 transition">
+                    <i class="fa-solid fa-coins text-6xl text-yellow-500"></i>
+                </div>
+                <div class="text-poker-muted text-sm mb-1">总盈利</div>
+                <!-- 修改颜色为红色表示盈利 -->
+                <div class="text-3xl font-bold {% if analysis.summary.total_profit >= 0 %}text-poker-win{% else %}text-poker-loss{% endif %}">
+                    {% if analysis.summary.total_profit >= 0 %}+{% endif %}￥{{ analysis.summary.total_profit }}
+                </div>
+            </div>
+
+            <!-- 总手数 -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div class="text-poker-muted text-sm mb-1">总手数</div>
+                <div class="text-3xl font-bold">{{ analysis.summary.total_hands }}</div>
+                <div class="text-xs text-poker-muted mt-2">样本量: {{ "充足" if analysis.summary.total_hands > 1000 else "较少" }}</div>
+            </div>
+
+            <!-- 胜率 (BB/100) -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div class="text-poker-muted text-sm mb-1">每百手盈利 (BB/100)</div>
+                <div class="text-3xl font-bold text-blue-400">{{ analysis.summary.bb_100 }} BB</div>
+                <div class="text-xs text-poker-muted mt-2">
+                    <span class="text-blue-400">{{ "稳健盈利" if analysis.summary.bb_100 > 5 else ("略有盈余" if analysis.summary.bb_100 > 0 else "需改进") }}</span>
+                </div>
+            </div>
+
+            <!-- 最佳底池 -->
+            <div class="bg-poker-card p-5 rounded-xl border border-gray-700 shadow-lg">
+                <div class="text-poker-muted text-sm mb-1">最大底池</div>
+                <div class="text-3xl font-bold text-yellow-500">￥{{ analysis.summary.best_pot_val }}</div>
+                <div class="text-xs text-poker-muted mt-2" id="best-pot-desc">
+                    <script>
+                        (function() {
+                            try {
+                                const desc = "{{ analysis.summary.best_pot_desc }}";
+                                // Expecting "Win with [[14,0],[13,1]]" or similar
+                                const match = desc.match(/Win with (\[.*\])/);
+                                if (match) {
+                                    const holeCards = JSON.parse(match[1]);
+                                    const ranks = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2'};
+                                    const suitIcons = {
+                                        3: '<span class="text-red-500 mx-0.5">♥</span>',
+                                        2: '<span class="text-red-500 mx-0.5">♦</span>',
+                                        1: '<span class="text-gray-900 mx-0.5">♣</span>',
+                                        0: '<span class="text-gray-900 mx-0.5">♠</span>'
+                                    };
+                                    if (Array.isArray(holeCards) && holeCards.length === 2) {
+                                        const c1 = holeCards[0], c2 = holeCards[1];
+                                        const cardStr = `<span class="inline-flex items-center ml-1">${ranks[c1[0]]||c1[0]}${suitIcons[c1[1]]||''}${ranks[c2[0]]||c2[0]}${suitIcons[c2[1]]||''}</span>`;
+                                        document.write("Win with " + cardStr);
+                                    } else {
+                                        document.write(desc);
+                                    }
+                                } else {
+                                    document.write(desc);
+                                }
+                            } catch(e) { document.write("{{ analysis.summary.best_pot_desc }}"); }
+                        })();
+                    </script>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 风格仪表盘 (Style Stats HUD) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <!-- 主要图表：盈利曲线 -->
+            <div class="lg:col-span-2 bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold"><i class="fa-solid fa-chart-line mr-2 text-poker-win"></i>筹码盈亏曲线</h3>
+                    <div class="flex gap-2">
+                        <!-- Legend 颜色调整 -->
+                        <span class="text-xs flex items-center gap-1"><div class="w-3 h-3 bg-poker-win rounded-full"></div> 实际盈利</span>
+                        <!-- Placeholder for now -->
+                        <!-- <span class="text-xs flex items-center gap-1"><div class="w-3 h-3 bg-yellow-500 rounded-full"></div> 摊牌盈利</span> -->
+                    </div>
+                </div>
+                <div class="h-64">
+                    <canvas id="profitChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 风格六维图 -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg">
+                <h3 class="text-lg font-bold mb-4 text-center">玩家风格</h3>
+                <div class="h-56">
+                    <canvas id="styleRadarChart"></canvas>
+                </div>
+                <div class="text-center mt-4">
+                    <span class="inline-block px-3 py-1 bg-blue-900 text-blue-200 rounded-full text-xs border border-blue-700" id="style-tag">Analyzing...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 详细技术指标 (Technical Indicators) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- VPIP -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 text-center relative">
+                <div class="text-poker-muted text-sm uppercase tracking-wider">VPIP (入池率)</div>
+                <div class="text-4xl font-extrabold my-2 text-poker-accent" id="stat-vpip">{{ analysis.tech_stats.vpip }}%</div>
+                <div class="text-xs text-gray-400">标准范围: 18% - 28%</div>
+                <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-poker-accent" style="width: {{ analysis.tech_stats.vpip }}%"></div>
+                </div>
+                <div class="mt-2 text-xs text-poker-accent font-semibold">{{ "健康" if 18 <= analysis.tech_stats.vpip <= 28 else ("过紧" if analysis.tech_stats.vpip < 18 else "过松") }}</div>
+            </div>
+
+            <!-- PFR -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 text-center">
+                <div class="text-poker-muted text-sm uppercase tracking-wider">PFR (翻前加注)</div>
+                <div class="text-4xl font-extrabold my-2 text-blue-400" id="stat-pfr">{{ analysis.tech_stats.pfr }}%</div>
+                <div class="text-xs text-gray-400">VPIP/PFR 缺口: {{ (analysis.tech_stats.vpip - analysis.tech_stats.pfr)|round(1) }}%</div>
+                <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-blue-400" style="width: {{ analysis.tech_stats.pfr }}%"></div>
+                </div>
+                <div class="mt-2 text-xs text-blue-400 font-semibold">{{ "激进" if analysis.tech_stats.pfr > 20 else "正常" }}</div>
+            </div>
+
+            <!-- AF -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 text-center">
+                <div class="text-poker-muted text-sm uppercase tracking-wider">AF (激进度)</div>
+                <div class="text-4xl font-extrabold my-2 text-yellow-500" id="stat-af">{{ analysis.tech_stats.af }}</div>
+                <div class="text-xs text-gray-400">建议 > 2.0</div>
+                <div class="mt-3 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div class="h-full bg-yellow-500" style="width: {{ (analysis.tech_stats.af / 5 * 100)|round }}%"></div>
+                </div>
+                <div class="mt-2 text-xs text-yellow-500 font-semibold">{{ "被动" if analysis.tech_stats.af < 1.5 else ("适中" if analysis.tech_stats.af < 3.0 else "激进") }}</div>
+            </div>
+        </div>
+
+        <!-- 4. 高级分析：起手牌热力图 & 位置分析 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- 起手牌热力图 -->
+            <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold"><i class="fa-solid fa-table-cells mr-2 text-poker-accent"></i>起手牌盈利分布</h3>
+                    <select class="bg-gray-800 text-xs text-white border border-gray-600 rounded px-2 py-1 outline-none">
+                        <option>按盈利 (Profit)</option>
+                        <!-- <option>按频率 (Frequency)</option> -->
+                    </select>
+                </div>
+                <div class="flex justify-center">
+                    <div class="heatmap-grid w-full max-w-md" id="handMatrix">
+                        <!-- JS will populate this -->
+                    </div>
+                </div>
+                <div class="flex justify-between text-xs text-gray-500 mt-2 px-4">
+                    <span>对角线: 口袋对子 (Pairs)</span>
+                    <span>右上: 同花 (Suited)</span>
+                    <span>左下: 非同花 (Offsuit)</span>
+                </div>
+                <div class="flex justify-center items-center gap-2 mt-3 text-xs">
+                    <span class="w-3 h-3 bg-red-500 rounded"></span> 盈利 (红)
+                    <span class="w-3 h-3 bg-gray-600 rounded ml-2"></span> 不玩/平
+                    <span class="w-3 h-3 bg-green-500 rounded ml-2"></span> 亏损 (绿)
+                </div>
+            </div>
+
+            <!-- 位置分析 -->
+            <div class="flex flex-col gap-6">
+                <!-- 位置柱状图 -->
+                <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg flex-1">
+                    <h3 class="text-lg font-bold mb-4">位置盈亏</h3>
+                    <div class="h-48">
+                        <canvas id="positionChart"></canvas>
+                    </div>
+                    <p class="text-xs text-poker-muted mt-4 text-center">
+                        提示: SB/BB 位置通常亏损是正常的，目标是减少亏损率。<br>BTN (桩位) 应该是你盈利最高的位置。
+                    </p>
+                </div>
+
+                <!-- 游戏记录列表 (简略) -->
+                <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg flex-1 overflow-hidden">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-bold">最近高额手牌</h3>
+                        <span class="text-xs text-gray-500 italic"><i class="fa-regular fa-hand-pointer mr-1"></i>点击查看详情</span>
+                    </div>
+
+                    <div class="overflow-y-auto h-40 pr-2">
+                        <table class="w-full text-sm text-left">
+                            <thead class="text-xs text-poker-muted border-b border-gray-700 uppercase">
+                                <tr>
+                                    <th class="py-2">Hand</th>
+                                    <th>Pos</th>
+                                    <th>Result</th>
+                                    <th class="text-right">Pot</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-poker-text">
+                                {% for hand in analysis.top_hands %}
+                                <tr class="border-b border-gray-800 hover:bg-gray-700 transition cursor-pointer" onclick='showHandDetails({{ hand | tojson | safe }})'>
+                                    <td class="py-2 font-mono text-gray-300">
+                                        <script>
+                                            (function() {
+                                                try {
+                                                    const holeCards = {{ hand.hole_cards | safe }};
+                                                    const ranks = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2'};
+                                                    const suitIcons = {
+                                                        3: '<span class="text-red-500 mx-0.5">♥</span>',
+                                                        2: '<span class="text-red-500 mx-0.5">♦</span>',
+                                                        1: '<span class="text-gray-900 mx-0.5">♣</span>',
+                                                        0: '<span class="text-gray-900 mx-0.5">♠</span>'
+                                                    };
+                                                    if (Array.isArray(holeCards) && holeCards.length === 2) {
+                                                        const c1 = holeCards[0], c2 = holeCards[1];
+                                                        const h1 = `${ranks[c1[0]]||c1[0]}${suitIcons[c1[1]]||''}`;
+                                                        const h2 = `${ranks[c2[0]]||c2[0]}${suitIcons[c2[1]]||''}`;
+                                                        document.write(`<div class="flex items-center gap-1">${h1}${h2}</div>`);
+                                                    } else {
+                                                        document.write(holeCards);
+                                                    }
+                                                } catch(e) { document.write("{{ hand.hole_cards }}"); }
+                                            })();
+                                        </script>
+                                    </td>
+                                    <td class="text-gray-400">{{ hand.position }}</td>
+                                    <td class="{% if hand.profit > 0 %}text-poker-win{% else %}text-poker-loss{% endif %} font-bold">
+                                        {{ "Win" if hand.profit > 0 else "Lose" }}
+                                    </td>
+                                    <td class="text-right {% if hand.profit > 0 %}text-poker-win{% else %}text-poker-loss{% endif %}">
+                                        {{ "+" if hand.profit > 0 else "" }}￥{{ hand.profit }}
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="4" class="text-center text-gray-500 py-4">暂无数据</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. AI 分析模块 (NEW) -->
+        <div class="bg-poker-card p-6 rounded-xl border border-gray-700 shadow-lg mt-8 relative overflow-hidden ring-1 ring-purple-900/50">
+            <!-- 背景光效 -->
+            <div class="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-purple-600 rounded-full filter blur-[80px] opacity-20 pointer-events-none"></div>
+
+            <!-- 模块头部 -->
+            <div class="flex items-center gap-4 mb-5 border-b border-gray-700 pb-4 relative z-10">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg animate-pulse-slow">
+                    <i class="fa-solid fa-robot text-white text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 tracking-wide">
+                        DeepSeek分析
+                    </h3>
+                    <p class="text-xs text-gray-400 flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                        基于本页数据实时生成评估报告
+                    </p>
+                </div>
+            </div>
+
+            <!-- 内容区域 -->
+            <div class="space-y-4 relative z-10">
+                <!-- 智能标签 -->
+                <div class="flex flex-wrap gap-2 opacity-0 transition-opacity duration-1000 delay-500" id="ai-tags">
+                    <!-- Dynamically generated tags in JS -->
+                </div>
+
+                <!-- 文字分析 -->
+                <div class="bg-gray-900/50 rounded-lg p-5 border border-gray-700/50 min-h-[120px]">
+                    <div class="text-gray-300 text-sm leading-7 font-mono" id="ai-analysis-content">
+                        <!-- 动态内容 -->
+                        <div class="flex items-center gap-3 text-gray-500 py-2">
+                            <i class="fa-solid fa-circle-notch fa-spin text-purple-500"></i>
+                            <span class="animate-pulse">正在解析玩家数据模型...</span>
+                        </div>
+                    </div>
+                    <!-- 光标 -->
+                    <span id="ai-cursor" class="inline-block w-2 h-4 bg-purple-400 align-middle ml-1 hidden cursor-blink"></span>
+                </div>
+
+                <div class="flex justify-end">
+                    <button onclick="regenerateAnalysis()" class="text-xs text-purple-400 hover:text-purple-300 transition flex items-center gap-1">
+                        <i class="fa-solid fa-rotate-right"></i> 重新生成分析
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="text-center py-6 text-poker-muted text-sm border-t border-gray-800 mt-8">
+        <p>&copy; 2026 GyPoker Analytics 狗运牌玩家分析</p>
+    </footer>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Inject data from Backend
+        const analysisData = {{ analysis_json | safe }};
+
+        // ============================================
+        // 1. Chart Configuration
+        // ============================================
+        
+        // Profit Chart
+        const ctxProfit = document.getElementById('profitChart').getContext('2d');
+        const profitChartData = analysisData.profit_chart || { labels: [], data: [] };
+        
+        new Chart(ctxProfit, {
+            type: 'line',
+            data: {
+                labels: profitChartData.labels,
+                datasets: [
+                    { 
+                        label: '净盈利 (Net Won)', 
+                        data: profitChartData.data, 
+                        borderColor: '#ef4444', 
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+                        tension: 0.3, 
+                        fill: {
+                            target: 'origin',
+                            above: 'rgba(239, 68, 68, 0.1)',   // Area above 0 (Red)
+                            below: 'rgba(34, 197, 94, 0.1)',   // Area below 0 (Green)
+                        },
+                        pointRadius: 4, 
+                        pointBackgroundColor: (context) => {
+                            const value = context.dataset.data[context.dataIndex];
+                            return value >= 0 ? '#ef4444' : '#22c55e';
+                        },
+                        pointBorderColor: (context) => {
+                            const value = context.dataset.data[context.dataIndex];
+                            return value >= 0 ? '#ef4444' : '#22c55e';
+                        },
+                        segment: {
+                            borderColor: ctx => ctx.p0.parsed.y >= 0 && ctx.p1.parsed.y >= 0 ? '#ef4444' : '#22c55e',
+                        },
+                        borderWidth: 2 
+                    }
+                ]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { labels: { color: '#94a3b8' } } 
+                }, 
+                scales: { 
+                    y: { 
+                        grid: { color: '#334155' }, 
+                        ticks: { color: '#94a3b8' } 
+                    }, 
+                    x: { 
+                        grid: { display: false }, 
+                        ticks: { color: '#94a3b8' } 
+                    } 
+                } 
+            }
+        });
+
+        // Radar Chart
+        const ctxRadar = document.getElementById('styleRadarChart').getContext('2d');
+        const radarData = analysisData.radar_chart || { values: [0,0,0,0,0,0], labels: ['VPIP', 'PFR', 'AF x10', '3-Bet', 'WTSD', 'C-Bet'] };
+        
+        new Chart(ctxRadar, {
+            type: 'radar',
+            data: { 
+                labels: radarData.labels, 
+                datasets: [{ 
+                    label: 'Player Stats', 
+                    data: radarData.values, 
+                    fill: true, 
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)', 
+                    borderColor: '#10b981', 
+                    pointBackgroundColor: '#10b981', 
+                    pointBorderColor: '#fff' 
+                }] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: '#334155' }, grid: { color: '#334155' }, pointLabels: { color: '#e2e8f0' }, ticks: { display: false, min: 0 } } }, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } } }
+        });
+
+        // Update Tag
+        const vpip = analysisData.tech_stats.vpip;
+        const pfr = analysisData.tech_stats.pfr;
+        let styleTag = "未知风格";
+        if (vpip > 40) styleTag = "LAG / Loose (松凶/松弱)";
+        else if (vpip < 15) styleTag = "Nit (岩石)";
+        else if (vpip >= 15 && vpip <= 30) {
+            if (pfr > vpip * 0.7) styleTag = "TAG (紧凶型)";
+            else styleTag = "Passive (紧弱)";
+        }
+        document.getElementById('style-tag').innerText = styleTag;
+
+
+        // Position Chart
+        const ctxPos = document.getElementById('positionChart').getContext('2d');
+        const posData = analysisData.position_stats || { labels: [], values: [] };
+        
+        new Chart(ctxPos, {
+            type: 'bar',
+            data: { 
+                labels: posData.labels, 
+                datasets: [{ 
+                    label: 'Profit', 
+                    data: posData.values, 
+                    backgroundColor: c => c.raw >= 0 ? '#ef4444' : '#22c55e', 
+                    borderRadius: 4 
+                }] 
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, x: { grid: { display: false }, ticks: { color: '#94a3b8' } } } }
+        });
+
+        // Hand Matrix
+        const ranks = ['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
+        const matrixContainer = document.getElementById('handMatrix');
+        const matrixData = analysisData.hand_matrix || {};
+        
+        ranks.forEach((r1, i) => {
+            ranks.forEach((r2, j) => {
+                const cell = document.createElement('div');
+                cell.className = 'hand-cell';
+                let handText = '', key = '';
+                
+                if (i === j) { 
+                    handText = r1 + r2; 
+                    key = handText;
+                } else if (i < j) { 
+                    handText = r1 + r2 + 's'; 
+                    key = handText;
+                } else { 
+                    handText = r2 + r1 + 'o'; 
+                    key = handText;
+                }
+                
+                const value = matrixData[key] || 0;
+                
+                cell.innerText = handText;
+                
+                // Coloring based on profit/loss
+                if (value > 0) { 
+                    // Max intensity at 500 chips?
+                    const alpha = Math.min(Math.abs(value)/500, 1) * 0.8 + 0.2;
+                    cell.style.backgroundColor = `rgba(239, 68, 68, ${alpha})`; 
+                    if(value > 1000) cell.classList.add('font-bold'); 
+                } else if (value < 0) { 
+                     const alpha = Math.min(Math.abs(value)/500, 1) * 0.8 + 0.2;
+                    cell.style.backgroundColor = `rgba(34, 197, 94, ${alpha})`; 
+                } else { 
+                    cell.style.backgroundColor = '#334155'; 
+                    cell.style.color = '#64748b'; 
+                }
+                
+                cell.title = `${handText}: ${value > 0 ? '+' : ''}${value}`;
+                matrixContainer.appendChild(cell);
+            });
+        });
+
+        // ============================================
+        // 4. AI Analysis Logic
+        // ============================================
+
+        function regenerateAnalysis() {
+             const contentEl = document.getElementById('ai-analysis-content');
+             const tagsEl = document.getElementById('ai-tags');
+             const cursorEl = document.getElementById('ai-cursor');
+
+             // Reset UI
+             contentEl.innerHTML = `
+                <div class="flex items-center gap-3 text-gray-500 py-2">
+                    <i class="fa-solid fa-circle-notch fa-spin text-purple-500"></i>
+                    <span class="animate-pulse">正在解析玩家数据模型...</span>
+                </div>`;
+             tagsEl.classList.add('opacity-0');
+             cursorEl.classList.add('hidden');
+
+             // Start Generation Sequence
+             setTimeout(() => {
+                 startTypewriter();
+             }, 1000);
+        }
+
+        function startTypewriter() {
+            const contentEl = document.getElementById('ai-analysis-content');
+            const tagsEl = document.getElementById('ai-tags');
+            const cursorEl = document.getElementById('ai-cursor');
+            const stats = analysisData.tech_stats;
+
+            // Generate Tags based on real stats
+            let tagsHtml = '';
+            tagsHtml += `<span class="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-tag"></i> 风格: ${styleTag}</span>`;
+            
+            if (analysisData.summary.total_profit > 0) {
+                 tagsHtml += `<span class="px-3 py-1 bg-green-500/10 border border-green-500/30 text-green-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> 盈利状态: 盈利中</span>`;
+            } else {
+                 tagsHtml += `<span class="px-3 py-1 bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-xs rounded-full flex items-center gap-1"><i class="fa-solid fa-arrow-trend-down"></i> 盈利状态: 亏损中</span>`;
+            }
+
+            tagsEl.innerHTML = tagsHtml;
+            tagsEl.classList.remove('opacity-0');
+
+            // Text to generate
+            const gap = (stats.vpip - stats.pfr).toFixed(1);
+            let analysisText = `从过去${analysisData.summary.total_hands}手牌的样本来看，您的VPIP为${stats.vpip}%，PFR为${stats.pfr}%。GAP为${gap}%。`;
+            
+            if (stats.vpip > 30) {
+                analysisText += "您的入池率偏高，建议减少边缘牌的游玩，收紧范围。";
+            } else if (stats.vpip < 18) {
+                analysisText += "您打得非常紧，可能会错过一些价值，建议适当在后位放宽范围。";
+            } else {
+                analysisText += "您的入池率控制得很好，保持了这个级别的标准水平。";
+            }
+
+            if (stats.af < 1.5) {
+                analysisText += " 激进度(AF)较低，您可能过于被动，建议在听牌或持强牌时更激进地加注。";
+            } else if (stats.af > 3.5) {
+                analysisText += " 激进度较高，请注意不要过度诈唬。";
+            }
+
+            contentEl.innerHTML = '';
+            cursorEl.classList.remove('hidden');
+
+            let i = 0;
+            const speed = 30; // ms per char
+
+            function type() {
+                if (i < analysisText.length) {
+                    contentEl.innerHTML += analysisText.charAt(i);
+                    i++;
+                    setTimeout(type, speed);
+                } else {
+                    cursorEl.classList.add('hidden');
+                }
+            }
+            type();
+        }
+
+        // Initialize AI analysis on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                regenerateAnalysis();
+            }, 1000);
+        });
+
+    </script>
+    <!-- 6. Replay Modal -->
+    <div id="replayModal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center backdrop-blur-sm opacity-0 transition-opacity duration-300" onclick="if(event.target === this) closeReplay()">
+        <div class="bg-poker-card w-full max-w-6xl h-[85vh] rounded-xl border border-gray-600 shadow-2xl transform scale-95 transition-transform duration-300 relative focus:outline-none flex flex-col" tabindex="0" id="replayContent">
+            
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-900/50 rounded-t-xl shrink-0">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-film text-poker-accent"></i>
+                    <span id="replayTitle">牌局回放</span>
+                </h3>
+                <div class="flex items-center gap-4">
+                    <button onclick="closeReplay()" class="text-gray-400 hover:text-white transition">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Modal Body (Split View) -->
+            <div class="flex-1 overflow-hidden flex flex-col lg:flex-row">
+                
+                <!-- Left: Visual Table (65%) -->
+                <div class="flex-1 bg-gray-900/30 relative flex flex-col p-4 border-b lg:border-b-0 lg:border-r border-gray-700">
+                    
+                    <!-- Phase Indicator -->
+                    <div class="flex justify-center gap-2 mb-6 text-[10px] font-bold tracking-widest uppercase shrink-0">
+                        <div id="phase-0" class="px-2 py-1 rounded bg-gray-700 text-gray-400 transition-colors">Preflop</div>
+                        <div class="text-gray-700 py-1">></div>
+                        <div id="phase-1" class="px-2 py-1 rounded bg-gray-800 text-gray-600 transition-colors">Flop</div>
+                        <div class="text-gray-700 py-1">></div>
+                        <div id="phase-2" class="px-2 py-1 rounded bg-gray-800 text-gray-600 transition-colors">Turn</div>
+                        <div class="text-gray-700 py-1">></div>
+                        <div id="phase-3" class="px-2 py-1 rounded bg-gray-800 text-gray-600 transition-colors">River</div>
+                        <div class="text-gray-700 py-1">></div>
+                        <div id="phase-4" class="px-2 py-1 rounded bg-gray-800 text-gray-600 transition-colors">Result</div>
+                    </div>
+
+                    <!-- Table Container (Center Content) -->
+                    <div class="flex-1 flex items-center justify-center relative min-h-[300px]">
+                         <!-- Table View -->
+                        <div class="relative bg-green-900/40 border-[6px] border-gray-700 rounded-full h-64 w-full max-w-lg flex items-center justify-center shadow-2xl scale-90 sm:scale-100">
+                             <!-- Dealer Button -->
+                            <div class="absolute text-poker-muted text-xs top-8 border border-gray-600 px-2 rounded-full bg-gray-900/50">Dealer</div>
+                            
+                            <!-- Center Area: Community Cards & Pot -->
+                            <div class="text-center z-10">
+                                <div class="text-gray-300 text-[10px] mb-1 tracking-wider uppercase opacity-70">公共牌</div>
+                                <div class="flex gap-2 justify-center min-h-[48px] mb-2" id="community-cards"></div>
+                                <div class="bg-black/40 px-3 py-1 rounded-full border border-yellow-500/30 inline-block backdrop-blur-sm">
+                                    <span class="text-yellow-500 font-bold text-sm transition-all duration-300" id="pot-display">Pot: ￥0</span>
+                                </div>
+                            </div>
+
+                            <!-- Villain (Top) -->
+                            <div class="absolute top-[-40px] flex flex-col items-center z-20">
+                                <div class="bg-gray-800 p-2 rounded-xl border-2 border-gray-600 shadow-xl relative w-24 mb-2">
+                                     <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gray-700 text-[10px] text-gray-300 px-2 rounded-full whitespace-nowrap border border-gray-600 max-w-[120px] truncate" id="villain-name-label">Opponent</div>
+                                    <div class="flex gap-1 justify-center" id="villain-cards">
+                                        <span class="bg-blue-200 w-6 h-8 rounded opacity-50 border border-blue-300"></span>
+                                        <span class="bg-blue-200 w-6 h-8 rounded opacity-50 border border-blue-300"></span>
+                                    </div>
+                                </div>
+                                <div id="villain-action" class="hidden action-pop relative z-30"></div>
+                            </div>
+
+                            <!-- Hero (Bottom) -->
+                            <div class="absolute bottom-[-40px] flex flex-col items-center z-20">
+                                <div id="hero-action" class="mb-2 hidden action-pop relative z-30"></div>
+                                <div class="bg-gray-800 p-2 rounded-xl border-2 border-yellow-500 shadow-xl relative w-24">
+                                    <div class="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-yellow-600 text-[10px] text-white px-2 rounded-full whitespace-nowrap border border-yellow-400 font-bold shadow max-w-[120px] truncate" id="hero-name-label">Hero</div>
+                                    <div class="flex gap-1 justify-center" id="hero-cards"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Action Log (35% or Fixed Width) -->
+                <div class="w-full lg:w-96 bg-gray-800 flex flex-col shrink-0">
+                    <div class="p-4 border-b border-gray-700 bg-gray-900/50 flex justify-between items-center shrink-0">
+                        <span class="font-bold text-gray-200"><i class="fa-solid fa-list-ol mr-2"></i>Action History</span>
+                        <span class="text-xs text-gray-500">Auto-scroll</span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-0" id="action-log-container">
+                        <!-- Log Items will be injected here -->
+                    </div>
+                    <!-- Controls Footer in Right Panel -->
+                     <div class="p-4 border-t border-gray-700 bg-gray-900/30 flex justify-center gap-3 shrink-0">
+                        <button onclick="prevStep()" class="flex-1 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition font-medium flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-backward"></i> Prev
+                        </button>
+                        <button onclick="nextStep()" class="flex-1 py-3 bg-poker-accent hover:bg-emerald-600 text-white rounded-lg text-sm transition font-bold shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2">
+                            Next <i class="fa-solid fa-forward"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let replayState = {
+            currentStep: 0,
+            steps: [],
+            hand: null,
+            playerId: {{ player_id }},
+            heroName: "{{ username }}"
+        };
+
+        function showHandDetails(hand) {
+            replayState.hand = hand;
+            replayState.currentStep = 0;
+            replayState.steps = buildReplaySteps(hand);
+            
+            // Open Modal
+            const modal = document.getElementById('replayModal');
+            const content = document.getElementById('replayContent');
+            
+            modal.classList.remove('hidden');
+            // Trigger reflow for animation
+            void modal.offsetWidth;
+            
+            modal.classList.remove('opacity-0');
+            content.classList.remove('scale-95');
+            content.classList.add('scale-100');
+            
+            document.getElementById('replayTitle').innerText = `Hand #${hand.hand_id} Replay`;
+            document.getElementById('hero-name-label').innerText = replayState.heroName;
+            document.getElementById('villain-name-label').innerText = "Opponent"; // Reset
+            
+            // Generate Action Log
+            generateActionLog(replayState.steps);
+            
+            // Render initial state
+            renderStep();
+            
+            // Focus for keyboard support
+            content.focus();
+        }
+
+        function closeReplay() {
+            const modal = document.getElementById('replayModal');
+            const content = document.getElementById('replayContent');
+            
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        // Build linear steps from hand data
+        function buildReplaySteps(hand) {
+            const steps = [];
+            
+            // 1. Initial Deal
+            steps.push({
+                type: 'init',
+                hole_cards: parseCards(hand.hole_cards),
+                pot: 0 // Start pot (blinds not strictly tracked in actions yet, assume 0 or implicit)
+            });
+
+            const board = parseCards(hand.board_cards);
+            let currentStreet = 0;
+            let currentPot = 0; // Accumulate from actions
+
+            // Helper to add deal steps
+            const addDealStep = (targetStreet) => {
+                if (targetStreet > currentStreet) {
+                    if (currentStreet < 1 && targetStreet >= 1) { // Flop
+                        steps.push({ type: 'deal', street: 1, cards: board.slice(0, 3), pot: currentPot });
+                    }
+                    if (currentStreet < 2 && targetStreet >= 2) { // Turn
+                        steps.push({ type: 'deal', street: 2, cards: board.slice(0, 4), pot: currentPot });
+                    }
+                    if (currentStreet < 3 && targetStreet >= 3) { // River
+                        steps.push({ type: 'deal', street: 3, cards: board.slice(0, 5), pot: currentPot });
+                    }
+                    currentStreet = targetStreet;
+                }
+            };
+
+            if (hand.actions && hand.actions.length > 0) {
+                hand.actions.forEach(act => {
+                    addDealStep(act.street);
+                    
+                    currentPot += (act.amount || 0);
+                    steps.push({
+                        type: 'action',
+                        player_id: act.player_id,
+                        name: act.name,
+                        action: act.action,
+                        amount: act.amount,
+                        pot: currentPot,
+                        street: act.street
+                    });
+                });
+                
+                // Deal remaining cards if hand went to showdown but no actions on later streets
+                // (e.g. All-in preflop)
+                // We check the final board length to guess how far it went
+                if (board.length >= 3) addDealStep(1);
+                if (board.length >= 4) addDealStep(2);
+                if (board.length >= 5) addDealStep(3);
+
+            } else {
+                // No actions recorded? Just show cards in sequence?
+                if (board.length >= 3) steps.push({ type: 'deal', street: 1, cards: board.slice(0, 3), pot: 0 });
+                if (board.length >= 4) steps.push({ type: 'deal', street: 2, cards: board.slice(0, 4), pot: 0 });
+                if (board.length >= 5) steps.push({ type: 'deal', street: 3, cards: board.slice(0, 5), pot: 0 });
+            }
+
+            // Final Result
+            steps.push({
+                type: 'result',
+                pot: hand.pot,
+                profit: hand.profit,
+                result: hand.result
+            });
+
+            return steps;
+        }
+
+        function nextStep() {
+            if (replayState.currentStep < replayState.steps.length - 1) {
+                replayState.currentStep++;
+                renderStep();
+            }
+        }
+
+        function prevStep() {
+            if (replayState.currentStep > 0) {
+                replayState.currentStep--;
+                renderStep();
+            }
+        }
+
+        // Render the current state based on step index
+        function renderStep() {
+            const stepIndex = replayState.currentStep;
+            const steps = replayState.steps;
+            const currentStepData = steps[stepIndex];
+            
+            // 1. Determine Visible Board & Pot
+            // We need to find the last 'deal' or 'action' step up to this point to know the board/pot
+            let visibleBoard = [];
+            let currentPot = 0;
+            let activePhase = 0; // 0=Pre, 1=Flop, 2=Turn, 3=River, 4=Result
+
+            for (let i = 0; i <= stepIndex; i++) {
+                const s = steps[i];
+                if (s.type === 'deal') {
+                    visibleBoard = s.cards;
+                    activePhase = s.street;
+                }
+                if (s.type === 'action') {
+                    currentPot = s.pot;
+                    activePhase = s.street;
+                }
+                if (s.type === 'init') {
+                    currentPot = s.pot;
+                }
+                if (s.type === 'result') {
+                    currentPot = s.pot; // Final pot
+                    activePhase = 4;
+                }
+            }
+
+            // Update Phase Indicator
+            document.querySelectorAll('[id^="phase-"]').forEach((el, idx) => {
+                if (idx === activePhase) {
+                    el.className = "px-2 py-1 rounded bg-poker-accent text-white shadow font-bold transition-colors";
+                } else if (idx < activePhase) {
+                    el.className = "px-2 py-1 rounded bg-gray-600 text-gray-400 transition-colors";
+                } else {
+                    el.className = "px-2 py-1 rounded bg-gray-800 text-gray-600 transition-colors";
+                }
+            });
+
+            // Update Pot
+            document.getElementById('pot-display').innerText = `Pot: ￥${currentPot}`;
+
+            // Render Board
+            const boardContainer = document.getElementById('community-cards');
+            boardContainer.innerHTML = '';
+            visibleBoard.forEach(card => {
+                boardContainer.appendChild(createCardEl(card));
+            });
+
+            // Render Hero Cards (Always visible)
+            const heroContainer = document.getElementById('hero-cards');
+            heroContainer.innerHTML = '';
+            const heroCards = steps[0].hole_cards || [];
+            heroCards.forEach(card => {
+                heroContainer.appendChild(createCardEl(card));
+            });
+
+            // Handle Action Bubbles
+            const heroActionEl = document.getElementById('hero-action');
+            const villainActionEl = document.getElementById('villain-action');
+            const villainNameEl = document.getElementById('villain-name-label');
+            
+            heroActionEl.className = "mb-2 hidden action-pop relative z-30";
+            villainActionEl.className = "hidden action-pop relative z-30";
+
+            if (currentStepData.type === 'action') {
+                const isHero = currentStepData.player_id === replayState.playerId;
+                const targetEl = isHero ? heroActionEl : villainActionEl;
+                
+                // Update Villain Name if it's their action
+                if (!isHero && currentStepData.name) {
+                    villainNameEl.innerText = currentStepData.name;
+                }
+
+                // Color mapping
+                let colorClass = "text-white";
+                let icon = "";
+                const act = currentStepData.action.toLowerCase();
+                
+                if (act.includes('check')) { icon = '<i class="fa-solid fa-check text-gray-400"></i>'; }
+                else if (act.includes('call')) { icon = '<i class="fa-solid fa-phone text-blue-400"></i>'; }
+                else if (act.includes('bet')) { icon = '<i class="fa-solid fa-coins text-yellow-500"></i>'; }
+                else if (act.includes('raise')) { icon = '<i class="fa-solid fa-arrow-up text-red-500"></i>'; }
+                else if (act.includes('fold')) { icon = '<i class="fa-solid fa-ban text-gray-500"></i>'; }
+                else if (act.includes('all')) { icon = '<i class="fa-solid fa-bolt text-purple-500"></i>'; }
+
+                targetEl.innerHTML = `<span class="bg-gray-900 text-white px-3 py-1 rounded-lg text-xs border border-gray-600 shadow-lg flex items-center gap-2">
+                    ${icon} 
+                    <span class="font-bold">${currentStepData.action}</span>
+                    ${currentStepData.amount ? `<span class="text-yellow-500 font-mono">￥${currentStepData.amount}</span>` : ''}
+                </span>`;
+                
+                targetEl.classList.remove('hidden');
+            } else if (currentStepData.type === 'result') {
+                // Show Result on Hero
+                heroActionEl.innerHTML = `<span class="bg-gray-900 text-white px-3 py-1 rounded-lg text-xs border ${currentStepData.profit > 0 ? 'border-green-500' : 'border-red-500'} shadow-lg flex items-center gap-2">
+                    <i class="fa-solid ${currentStepData.profit > 0 ? 'fa-trophy text-green-500' : 'fa-skull text-red-500'}"></i>
+                    <span class="font-bold ${currentStepData.profit > 0 ? 'text-green-500' : 'text-red-500'}">${currentStepData.profit > 0 ? 'WIN' : 'LOSE'} ￥${Math.abs(currentStepData.profit)}</span>
+                </span>`;
+                heroActionEl.classList.remove('hidden');
+            }
+
+            // Highlight Log Item
+            document.querySelectorAll('#action-log-container > div[id^="log-step-"]').forEach(el => {
+                el.classList.remove('bg-gray-700', 'border-l-4', 'border-poker-accent', 'opacity-100');
+                el.classList.add('opacity-50', 'border-l-4', 'border-transparent');
+            });
+            
+            const activeLog = document.getElementById(`log-step-${stepIndex}`);
+            if (activeLog) {
+                activeLog.classList.remove('opacity-50', 'border-transparent');
+                activeLog.classList.add('bg-gray-700', 'border-l-4', 'border-poker-accent', 'opacity-100');
+                activeLog.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        // Utils
+        function parseCards(cardData) {
+            let cards = [];
+            try {
+                 if (Array.isArray(cardData)) cards = cardData;
+                 else if (typeof cardData === 'string' && cardData.trim() !== '') {
+                     let cleanStr = cardData.replace(/'/g, '"');
+                     cards = JSON.parse(cleanStr);
+                 }
+            } catch(e) { console.error("Card parse error", e); }
+            return cards || [];
+        }
+
+        function createCardEl(card) {
+             let rank, suit;
+            if (Array.isArray(card)) {
+                 rank = card[0];
+                 suit = card[1];
+            } else if (typeof card === 'string' && card.length >= 2) {
+                rank = card[0]; 
+                const suitMap = {'s':0, 'c':1, 'd':2, 'h':3, 'S':0, 'C':1, 'D':2, 'H':3, '♠':0, '♣':1, '♦':2, '♥':3};
+                suit = suitMap[card[1]] !== undefined ? suitMap[card[1]] : 0;
+            }
+
+            const rankStr = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T'}[rank] || rank;
+            const suitData = {
+                3: { icon: '♥', color: 'text-red-600' },
+                2: { icon: '♦', color: 'text-red-600' },
+                1: { icon: '♣', color: 'text-gray-900' },
+                0: { icon: '♠', color: 'text-gray-900' }
+            }[suit] || { icon: '?', color: 'text-gray-500' };
+
+            const el = document.createElement('div');
+            el.className = "bg-white w-8 h-12 md:w-10 md:h-14 rounded shadow-md border border-gray-300 flex flex-col items-center justify-center leading-none select-none card-reveal";
+            el.innerHTML = `<span class="text-xs md:text-sm font-black ${suitData.color}">${rankStr}</span><span class="text-sm md:text-lg ${suitData.color}">${suitData.icon}</span>`;
+            return el;
+        }
+
+        // NEW HELPERS for Replay Log
+        function generateActionLog(steps) {
+            const container = document.getElementById('action-log-container');
+            container.innerHTML = '';
+            
+            let currentStreet = -1;
+            const streets = ['Preflop', 'Flop', 'Turn', 'River', 'Showdown'];
+            
+            steps.forEach((step, index) => {
+                let stepStreet = -1;
+                // Infer street
+                if (step.type === 'init') stepStreet = 0;
+                else if (step.type === 'deal') stepStreet = step.street;
+                else if (step.type === 'action') stepStreet = step.street;
+                else if (step.type === 'result') stepStreet = 4;
+                
+                // Add header if street changes
+                if (stepStreet > -1 && stepStreet !== currentStreet) {
+                    currentStreet = stepStreet;
+                    const header = document.createElement('div');
+                    header.className = "sticky top-0 bg-gray-800/95 backdrop-blur z-10 px-4 py-2 text-xs font-bold text-poker-muted uppercase border-y border-gray-700 mt-0 shadow-sm";
+                    header.innerText = streets[currentStreet] || 'Unknown';
+                    container.appendChild(header);
+                }
+
+                const item = document.createElement('div');
+                item.id = `log-step-${index}`;
+                item.className = "px-4 py-3 border-b border-gray-700/30 text-sm flex gap-3 items-start transition-all duration-200 cursor-pointer hover:bg-gray-700/30 opacity-60 border-l-4 border-transparent";
+                item.onclick = () => { replayState.currentStep = index; renderStep(); };
+
+                let content = '';
+                if (step.type === 'init') {
+                    content = `<div class="text-gray-400 italic">🏁 Game Started. Blinds posted.</div>`;
+                } else if (step.type === 'deal') {
+                    const cardHtml = step.cards.map(c => formatCardText(c)).join(' ');
+                    content = `<div class="text-gray-300 font-mono flex items-center gap-2"><span>🎴 Dealt:</span> <span class="tracking-widest flex gap-1">${cardHtml}</span></div>`;
+                } else if (step.type === 'action') {
+                    const isHero = step.player_id === replayState.playerId;
+                    const name = isHero ? 'Hero' : (step.name || 'Opponent');
+                    const color = isHero ? 'text-yellow-500' : 'text-blue-400';
+                    const actionColor = getActionColor(step.action);
+                    
+                    content = `
+                        <div class="flex-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-bold ${color}">${name}</span>
+                                <span class="font-mono text-xs text-gray-500">Pot: ￥${step.pot}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="${actionColor} font-bold uppercase text-xs border border-current px-1.5 rounded">${step.action}</span>
+                                ${step.amount ? `<span class="text-gray-200 font-mono">￥${step.amount}</span>` : ''}
+                            </div>
+                        </div>
+                    `;
+                } else if (step.type === 'result') {
+                    const isWin = step.profit > 0;
+                     content = `
+                        <div class="flex-1 ${isWin ? 'bg-green-900/20' : 'bg-red-900/20'} -m-2 p-3 rounded border ${isWin ? 'border-green-900/30' : 'border-red-900/30'}">
+                            <div class="font-bold ${isWin ? 'text-green-400' : 'text-red-400'} flex items-center gap-2">
+                                <i class="fa-solid ${isWin ? 'fa-trophy' : 'fa-thumbs-down'}"></i>
+                                ${isWin ? 'WINNER' : 'LOSS'}
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1 flex justify-between">
+                                <span>Net Result:</span>
+                                <span class="${isWin ? 'text-green-300' : 'text-red-300'} font-mono">${step.profit > 0 ? '+' : ''}￥${step.profit}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                item.innerHTML = content;
+                container.appendChild(item);
+            });
+        }
+
+        function getActionColor(action) {
+            const act = String(action).toLowerCase();
+            if (act.includes('fold')) return 'text-gray-500 border-gray-500';
+            if (act.includes('check')) return 'text-gray-400 border-gray-400';
+            if (act.includes('call')) return 'text-blue-400 border-blue-400';
+            if (act.includes('bet')) return 'text-yellow-500 border-yellow-500';
+            if (act.includes('raise')) return 'text-red-500 border-red-500';
+            if (act.includes('all')) return 'text-purple-500 border-purple-500';
+            return 'text-white border-white';
+        }
+
+        function formatCardText(card) {
+            let rank, suit;
+            if (Array.isArray(card)) {
+                 rank = card[0];
+                 suit = card[1];
+            } else if (typeof card === 'string' && card.length >= 2) {
+                rank = card[0]; 
+                const suitMap = {'s':0, 'c':1, 'd':2, 'h':3, 'S':0, 'C':1, 'D':2, 'H':3, '♠':0, '♣':1, '♦':2, '♥':3};
+                suit = suitMap[card[1]] !== undefined ? suitMap[card[1]] : 0;
+            }
+
+            const rankStr = {14:'A', 13:'K', 12:'Q', 11:'J', 10:'T'}[rank] || rank;
+            const suitData = {
+                3: { icon: '♥', color: 'text-red-500' },
+                2: { icon: '♦', color: 'text-red-500' },
+                1: { icon: '♣', color: 'text-gray-900' },
+                0: { icon: '♠', color: 'text-gray-900' }
+            }[suit] || { icon: '?', color: 'text-gray-500' };
+            
+            return `<span class="${suitData.color} font-bold bg-gray-900 px-1 rounded border border-gray-700/50 text-xs">${rankStr}${suitData.icon}</span>`;
+        }
+
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('replayModal').classList.contains('hidden')) return;
+            if (e.key === 'ArrowRight') nextStep();
+            if (e.key === 'ArrowLeft') prevStep();
+            if (e.key === 'Escape') closeReplay();
+        });
+
+    </script>
+</body>
+</html>

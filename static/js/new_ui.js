@@ -5,7 +5,6 @@
 const PyPoker = {
     socket: null,
     wantsToStartFinalHands: false,
-    wantsToResetScores: false,
     roomId: null,
     players: {},
     playerIds: [],
@@ -19,7 +18,7 @@ const PyPoker = {
     config: {
         // 是否使用图像扑克牌（设置为 true 后需配置 cardImagePath）
         // **视觉优化**: 默认启用图片扑克牌以获得更佳视觉效果。
-        // 请确保在 '/static/images/cards/' 目录下存放了 'spades_A.png', 'hearts_K.png' 等格式的图片文件。
+        // 请确保在 '/static/images/cards/' 目录下存放了 'spades_7.png', 'hearts_7.png' 等格式的图片文件。
         useCardImages: true,
         // 扑克牌图像路径模板，{suit} 和 {rank} 会被替换为实际值
         // 例如: '/static/images/cards/{suit}_{rank}.png'
@@ -338,16 +337,16 @@ const PyPoker = {
 
         // 下注位置坐标（基于原始桌面图 2816x1536 的像素坐标，左上角为 (0,0)）
         betPositionsPx: [
-            { x: 2220, y: 1185 }, // Seat 0
-            { x: 2445, y: 945  }, // Seat 1
-            { x: 2430, y: 590  }, // Seat 2
-            { x: 2160, y: 365  }, // Seat 3
-            { x: 1675, y: 365  }, // Seat 4
-            { x: 1140, y: 365  }, // Seat 5
-            { x: 660,  y: 365  }, // Seat 6
-            { x: 378,  y: 590  }, // Seat 7
-            { x: 371,  y: 945  }, // Seat 8
-            { x: 594,  y: 1185 }  // Seat 9
+            { x: 594,  y: 1185 },  // Seat 0
+            { x: 371,  y: 945  }, // Seat 1
+            { x: 378,  y: 590  }, // Seat 2
+            { x: 660,  y: 365  }, // Seat 3
+            { x: 1140, y: 365  }, // Seat 4
+            { x: 1675, y: 365  }, // Seat 5
+            { x: 2160, y: 365  }, // Seat 6
+            { x: 2430, y: 590  }, // Seat 7
+            { x: 2445, y: 945  }, // Seat 8
+            { x: 2220, y: 1185 } // Seat 9
         ],
 
         // 原始桌面图尺寸（用于把像素坐标转换为百分比坐标）
@@ -474,7 +473,8 @@ const PyPoker = {
 
         // 设置赢家
         setWinners: function(pot) {
-            const moneySplit = pot.money_split;
+            // 优先使用后端计算好的净利润 `net_win_split`，如果不存在则回退到原始的 `money_split`
+            const moneyToShow = pot.net_win_split ?? pot.money_split;
             
             // 不再重置所有座位状态，而是累加赢家信息
             // 这样可以正确处理多边池的情况（先后触发多次 winner-designation）
@@ -513,7 +513,7 @@ const PyPoker = {
                             seat.appendChild(winLabel);
                         }
                         
-                        const newAmount = currentAmount + moneySplit;
+                        const newAmount = currentAmount + moneyToShow;
                         winLabel.textContent = `+$${newAmount}`;
                     }
                 });
@@ -538,6 +538,36 @@ const PyPoker = {
             }
         },
 
+        // 切换卡牌翻转状态
+        toggleCardFlip: function(cardEl) {
+            if (cardEl.classList.contains('is-flipping')) return;
+
+            cardEl.classList.add('is-flipping');
+
+            setTimeout(() => {
+                if (cardEl.classList.contains('face-down')) {
+                    // 翻回正面
+                    cardEl.classList.remove('face-down', 'custom-back');
+                    if (cardEl.dataset.frontImage) {
+                        cardEl.style.backgroundImage = cardEl.dataset.frontImage;
+                    }
+                } else {
+                    // 翻到背面
+                    if (!cardEl.dataset.frontImage) {
+                        // 保存正面图片（如果存在）
+                        cardEl.dataset.frontImage = cardEl.style.backgroundImage;
+                    }
+                    
+                    cardEl.classList.add('face-down');
+                    if (PyPoker.config.useCustomCardBack) {
+                        cardEl.classList.add('custom-back');
+                    }
+                    cardEl.style.backgroundImage = `url('${PyPoker.config.cardBackImage}')`;
+                }
+                cardEl.classList.remove('is-flipping');
+            }, 150);
+        },
+
         // 更新当前玩家手牌
         updateCurrentPlayerCards: function(cards, score) {
             const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
@@ -558,7 +588,16 @@ const PyPoker = {
             if (myHandDisplay) {
                 myHandDisplay.innerHTML = '';
                 for (let i in cards) {
-                    myHandDisplay.innerHTML += PyPoker.Game.createCard(cards[i][0], cards[i][1]);
+                    const tempWrapper = document.createElement('div');
+                    tempWrapper.innerHTML = PyPoker.Game.createCard(cards[i][0], cards[i][1]);
+                    const cardEl = tempWrapper.firstElementChild;
+                    
+                    // 点击翻转手牌
+                    cardEl.addEventListener('click', function() {
+                        PyPoker.Game.toggleCardFlip(this);
+                    });
+                    
+                    myHandDisplay.appendChild(cardEl);
                 }
             }
         },
@@ -612,9 +651,9 @@ const PyPoker = {
                     PyPoker.Game.addSharedCards(message.cards);
                     break;
                 case 'winner-designation':
+                    PyPoker.Game.setWinners(message.pot);
                     PyPoker.Game.updatePlayers(message.players);
                     PyPoker.Game.updatePots(message.pots);
-                    PyPoker.Game.setWinners(message.pot);
                     break;
                 case 'showdown':
                     PyPoker.Game.updatePlayersCards(message.players);
@@ -695,10 +734,8 @@ const PyPoker = {
                         <tr>
                             <th>#</th>
                             <th>玩家</th>
-                            <th>总积分</th>
-                            <th>bb/100</th>
-                            <th>当日</th>
-                            <th>净胜</th>
+                            <th>当前筹码</th>
+                            <th>当日净胜</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -709,20 +746,18 @@ const PyPoker = {
             const rankEmojis = ['🥇', '🥈', '🥉'];
 
             data.forEach((player, index) => {
-                const [rank, playerName, totalScore, bbPer100, dailyTotal, dailyProfit] = player;
+                const [rank, playerName, currentChips, dailyNet] = player;
                 const row = document.createElement('tr');
                 
                 // Format profit with sign and color
-                const profitClass = dailyProfit > 0 ? 'profit-pos' : (dailyProfit < 0 ? 'profit-neg' : 'profit-neutral');
-                const profitSign = dailyProfit > 0 ? '+' : '';
+                const profitClass = dailyNet > 0 ? 'profit-pos' : (dailyNet < 0 ? 'profit-neg' : 'profit-neutral');
+                const profitSign = dailyNet > 0 ? '+' : '';
                 
                 row.innerHTML = `
                     <td class="col-rank">${rankEmojis[index] || rank}</td>
                     <td class="col-name">${playerName}</td>
-                    <td class="col-total">${totalScore}</td>
-                    <td class="col-bb">${bbPer100}</td>
-                    <td class="col-daily">${dailyTotal}</td>
-                    <td class="col-profit ${profitClass}">${profitSign}${dailyProfit}</td>
+                    <td class="col-chips">${currentChips}</td>
+                    <td class="col-profit ${profitClass}">${profitSign}${dailyNet}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -799,6 +834,7 @@ const PyPoker = {
                     seatDiv.innerHTML = `
                         <div class="avatar-container">
                             <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
+                            <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
                         </div>
                         <div class="player-info">
                             <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
@@ -830,10 +866,8 @@ const PyPoker = {
             // 房主功能按钮显示
             if (message.owner_id == currentPlayerId) {
                 document.getElementById('last-10-hands-btn').style.display = 'inline-block';
-                document.getElementById('reset-scores-btn').style.display = 'inline-block';
             } else {
                 document.getElementById('last-10-hands-btn').style.display = 'none';
-                document.getElementById('reset-scores-btn').style.display = 'none';
             }
 
             // 更新房主名称
@@ -844,14 +878,18 @@ const PyPoker = {
             switch (message.event) {
                 case 'player-added':
                 case 'player-rejoined':
+                case 'readiness-update':
                     const pId = message.player_id;
-                    const pData = message.players[pId];
-                    const pName = pId == currentPlayerId ? 'You' : pData.name;
                     
-                    if (message.event === 'player-added') {
-                        PyPoker.Logger.log(pName + ' 加入了房间');
-                    } else {
-                        PyPoker.Logger.log(pName + ' 重新连接');
+                    if (message.event === 'player-added' || message.event === 'player-rejoined') {
+                        const pData = message.players[pId];
+                        const pName = pId == currentPlayerId ? 'You' : (pData ? pData.name : 'Unknown');
+                        
+                        if (message.event === 'player-added') {
+                            PyPoker.Logger.log(pName + ' 加入了房间');
+                        } else {
+                            PyPoker.Logger.log(pName + ' 重新连接');
+                        }
                     }
 
                     // Update local state
@@ -876,6 +914,7 @@ const PyPoker = {
                                 seat.innerHTML = `
                                     <div class="avatar-container">
                                         <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
+                                        <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
                                     </div>
                                     <div class="player-info">
                                         <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
@@ -898,6 +937,22 @@ const PyPoker = {
                                         avatar.style.backgroundSize = 'cover';
                                         avatar.style.backgroundPosition = 'center';
                                         avatar.textContent = ''; // 清除文字
+                                    }
+                                }
+
+                                // Update Readiness Dot
+                                const avatarContainer = seat.querySelector('.avatar-container');
+                                if (avatarContainer) {
+                                    let readinessDot = avatarContainer.querySelector('.readiness-dot');
+                                    if (!readinessDot) {
+                                        readinessDot = document.createElement('div');
+                                        readinessDot.className = 'readiness-dot';
+                                        avatarContainer.appendChild(readinessDot);
+                                    }
+                                    if (player.ready) {
+                                        readinessDot.classList.add('ready');
+                                    } else {
+                                        readinessDot.classList.remove('ready');
                                     }
                                 }
                             }
@@ -985,10 +1040,6 @@ const PyPoker = {
                         pongMsg.start_final_10_hands = true;
                         PyPoker.wantsToStartFinalHands = false;
                     }
-                    if (PyPoker.wantsToResetScores) {
-                        pongMsg.reset_scores = true;
-                        PyPoker.wantsToResetScores = false;
-                    }
                     PyPoker.socket.emit('game_message', pongMsg);
                     break;
 
@@ -1056,15 +1107,6 @@ const PyPoker = {
             PyPoker.wantsToStartFinalHands = true;
             this.value = '下把开始最后10把';
             this.disabled = true;
-        });
-
-        // 清空积分按钮
-        document.getElementById('reset-scores-btn').addEventListener('click', function() {
-            if (confirm('确定要清空所有玩家的积分吗？此操作不可逆转。')) {
-                PyPoker.wantsToResetScores = true;
-                this.value = '请求已发送';
-                this.disabled = true;
-            }
         });
 
         // 弃牌按钮

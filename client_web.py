@@ -3,6 +3,7 @@ import random
 import uuid
 import json
 import requests
+import datetime
 
 import gevent
 import redis
@@ -15,7 +16,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from poker.channel import ChannelError, MessageFormatError, MessageTimeout
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
-from poker.database import get_db_connection, get_ranking_list, get_api_key
+from poker.db_utils import get_player_by_id, get_player_by_login_username, create_player, get_api_key, get_player_analysis_data, get_daily_ranking_list, check_and_reset_daily_chips, update_player_profile
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "!!_-pyp0k3r-_!!"
@@ -40,27 +41,35 @@ player_channels = {}
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-chat"
 
+FORTUNES = [
+    "今日宜：诈唬。你的底牌看不见，但你的气场看得见。",
+    "运气爆棚：口袋对子出现的概率提升 20%。",
+    "警惕：河牌可能会带来惊天逆转，请保持冷静。",
+    "上上签：今日适合激进打法，幸运女神站在你这边。",
+    "运势平平：耐心等待位置，不要强行入池。",
+    "大吉：你的坚果牌终将等到大鱼。",
+    "今日忌：冲动All-in。留得青山在，不怕没柴烧。"
+]
+
+
 class User(UserMixin):
-    def __init__(self, id, username, password, email, money, loan, avatar=None):
+    def __init__(self, id, username, password, email, money, avatar=None):
         self.id = id
         self.username = username
         self.password = password
         self.email = email
         self.money = money
-        self.loan = loan
         self.avatar = avatar
 
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db_connection()
-    user_data = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
+    user_data = get_player_by_id(user_id)
     if user_data:
-        # 检查 avatar 列是否存在，如果不存在则为 None
-        avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
-        return User(user_data["id"], user_data["username"], user_data["password"],
-                    user_data["email"], user_data["money"], user_data["loan"], avatar)
+        # Mapping: nickname -> username (User class property), username -> email (User class property)
+        # chips -> money
+        return User(user_data["id"], user_data["nickname"], user_data["password_hash"],
+                    user_data["username"], user_data["chips"], user_data["avatar"])
     return None
 
 
@@ -68,40 +77,75 @@ def load_user(user_id):
 @login_required
 def index():
     if current_user.is_authenticated:
-        return redirect(url_for("join"))
+        return redirect(url_for("navigator"))
     else:
         return redirect(url_for("login"))
+
+
+@app.route("/navigator")
+@login_required
+def navigator():
+    analysis_data = get_player_analysis_data(current_user.id)
+    stats = {"vpip": 0, "pfr": 0, "win_rate": 0, "hands": 0}
+
+    if analysis_data:
+        stats["vpip"] = analysis_data["tech_stats"].get("vpip", 0)
+        stats["pfr"] = analysis_data["tech_stats"].get("pfr", 0)
+        stats["win_rate"] = analysis_data["summary"].get("total_profit", 0)
+        stats["hands"] = analysis_data["summary"].get("total_hands", 0)
+
+    return render_template("navigator_page.html",
+                           username=current_user.username,
+                           money=current_user.money,
+                           avatar=current_user.avatar,
+                           stats=stats)
+
+
+@app.route("/analysis")
+@login_required
+def analysis():
+    analysis_data = get_player_analysis_data(current_user.id)
+    # Ensure data is JSON serializable for the template JS
+    analysis_json = json.dumps(analysis_data) if analysis_data else "{}"
+    
+    return render_template("player_analysis.html", 
+                           analysis=analysis_data,
+                           analysis_json=analysis_json,
+                           username=current_user.username,
+                           player_id=current_user.id)
+
 
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form["username"]
+        username = request.form["username"]  # This is the Nickname (Display Name)
         password = request.form["password"]
-        email = request.form["email"]
+        email = request.form["email"]  # This is the Login Username
         invite = request.form["invite"]
-        avatar = request.form.get("avatar") # 获取头像
+        avatar = request.form.get("avatar")
 
         if invite != INVITE_CODE:
             flash("Invalid invite code. Please try again.")
             return render_template("new_login.html", mode="register")
 
-        conn = get_db_connection()
-        existing_user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        # Check if login username exists
+        existing_user = get_player_by_login_username(email)
 
         if existing_user:
-            conn.close()
             flash("Username already exists. Please choose another one.")
             return render_template("new_login.html", mode="register")
 
         hashed_password = generate_password_hash(password)
-        conn.execute("INSERT INTO users (username, password, email, avatar) VALUES (?, ?, ?, ?)",
-                     (username, hashed_password, email, avatar))
-        conn.commit()
-        conn.close()
 
-        flash("Registration successful! Please log in.")
-        return redirect(url_for("login"))
+        success = create_player(email, hashed_password, username, avatar)
+
+        if success:
+            flash("Registration successful! Please log in.")
+            return redirect(url_for("login"))
+        else:
+            flash("Registration failed. Please try again.")
+            return render_template("new_login.html", mode="register")
 
     return render_template("new_login.html", mode="register")
 
@@ -109,19 +153,22 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"]
+        email = request.form["email"]  # Login Username
         password = request.form["password"]
 
-        conn = get_db_connection()
-        user_data = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        conn.close()
+        user_data = get_player_by_login_username(email)
 
-        if user_data and check_password_hash(user_data["password"], password):
-            avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
-            user = User(user_data["id"], user_data["username"], user_data["password"],
-                        user_data["email"], user_data["money"], user_data["loan"], avatar)
+        if user_data and check_password_hash(user_data["password_hash"], password):
+            # Daily Check: Reset chips to 3000 if it's a new day
+            current_chips = check_and_reset_daily_chips(user_data["id"])
+            
+            # Update local user_data with the potentially new chip count
+            user_data["chips"] = current_chips
+            
+            user = User(user_data["id"], user_data["nickname"], user_data["password_hash"],
+                        user_data["username"], user_data["chips"], user_data["avatar"])
             login_user(user)
-            return redirect(url_for("join"))
+            return redirect(url_for("navigator"))
 
         flash("Invalid username or password. Please try again.")
         return render_template("new_login.html", mode="login")
@@ -129,22 +176,86 @@ def login():
     return render_template("new_login.html", mode="login")
 
 
+@app.route("/forgot-password", methods=["GET"])
+def forgot_password():
+    return render_template("new_login.html", mode="forgot_password")
+
+
+@app.route("/reset-password", methods=["POST"])
+def reset_password():
+    email = request.form["email"]
+    invite = request.form["invite"]
+    password = request.form["password"]
+
+    if invite != INVITE_CODE:
+        flash("Invalid invite code.")
+        return render_template("new_login.html", mode="forgot_password")
+
+    user_data = get_player_by_login_username(email)
+    if not user_data:
+        flash("User not found.")
+        return render_template("new_login.html", mode="forgot_password")
+
+    hashed_password = generate_password_hash(password)
+    success = update_player_profile(user_data["id"], password_hash=hashed_password)
+
+    if success:
+        flash("Password reset successful! Please log in.")
+        return redirect(url_for("login"))
+    else:
+        flash("Password reset failed. Please try again.")
+        return render_template("new_login.html", mode="forgot_password")
+
+
 @app.route('/api/get-ranking', methods=['GET'])
 def get_ranking():
-    ranking_data = get_ranking_list()
+    ranking_data = get_daily_ranking_list()
     return jsonify(ranking_data)
 
 
+@app.route("/api/update-profile", methods=["POST"])
+@login_required
+def update_profile():
+    data = request.json
+    nickname = data.get("nickname")
+    password = data.get("password")
+    avatar = data.get("avatar")
+    
+    password_hash = None
+    if password:
+        password_hash = generate_password_hash(password)
+        
+    success = update_player_profile(current_user.id, nickname, password_hash, avatar)
+    
+    if success:
+        return jsonify({"success": True})
+    else:
+        return jsonify({"success": False, "message": "Update failed"}), 500
+
+
 @app.route('/api/fortune', methods=['POST'])
+@login_required
 def get_fortune():
-    data = request.get_json()
-    user_prompt = data.get('prompt', '')
-    system_prompt = data.get('system', '')
+    """
+    DeepSeek运势预测 - 每人每天限一次
+    """
+    today = datetime.date.today().isoformat()
+    user_id = current_user.id
+    redis_key = f"fortune:{today}:{user_id}"
+
+    # Check if user already has a fortune for today
+    cached_fortune = redis.get(redis_key)
+    if cached_fortune:
+        return jsonify({"content": cached_fortune.decode('utf-8'), "cached": True})
+
+    user_prompt = '请告诉我今天的运气如何，带一点博弈术语，比如‘红黑’、‘同花’、‘庄闲’等。'
+    system_prompt = '你是一个在澳门赌场工作多年的资深荷官，说话风格奢华、神秘、老练。请根据当前的‘德州扑克’主题，为玩家生成一段简短的今日运势（50字以内）。'
 
     api_key = get_api_key('deepseek')
     if not api_key:
-        app.logger.error("DeepSeek API Key not found in database")
-        return jsonify({"error": "API Key not configured"}), 500
+        fallback_content = random.choice(FORTUNES)
+        redis.setex(redis_key, 86400, fallback_content)
+        return jsonify({"content": fallback_content, "cached": False})
 
     url = f"{DEEPSEEK_BASE_URL}/v1/chat/completions"
     payload = {
@@ -153,7 +264,7 @@ def get_fortune():
             *([{"role": "system", "content": system_prompt}] if system_prompt else []),
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.6
+        "temperature": 0.5
     }
 
     try:
@@ -164,10 +275,18 @@ def get_fortune():
         response.raise_for_status()
         result = response.json()
         content = result.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
-        return jsonify({"content": content})
+        
+        # Cache the fortune for 24 hours only on success
+        if content:
+            redis.setex(redis_key, 86400, content)
+        
+        return jsonify({"content": content, "cached": False})
     except Exception as e:
         app.logger.error(f"DeepSeek API Error: {e}")
-        return jsonify({"error": "Failed to fetch fortune"}), 500
+        # Fallback to local fortunes on error
+        fallback_content = random.choice(FORTUNES)
+        redis.setex(redis_key, 86400, fallback_content)
+        return jsonify({"content": fallback_content, "cached": False})
 
 
 @app.route("/join", methods=["GET", "POST"])
@@ -184,7 +303,6 @@ def join():
             session["player-id"] = current_user.id
             session["player-name"] = current_user.username
             session["player-money"] = current_user.money
-            session['player-loan'] = current_user.loan
             # session['player-avatar'] = current_user.avatar
 
             return render_template("new_ui.html",
@@ -192,7 +310,6 @@ def join():
                                    player_id=session["player-id"],
                                    username=session["player-name"],
                                    money=session["player-money"],
-                                   loan=session['player-loan'],
                                    avatar=current_user.avatar,
                                    room=session["room-id"])
 
@@ -202,7 +319,6 @@ def join():
             session["player-id"] = current_user.id
             session["player-name"] = current_user.username
             session["player-money"] = current_user.money
-            session['player-loan'] = current_user.loan
             # session['player-avatar'] = current_user.avatar
 
             return render_template("new_ui.html",
@@ -210,7 +326,6 @@ def join():
                                    player_id=session["player-id"],
                                    username=session["player-name"],
                                    money=session["player-money"],
-                                   loan=session['player-loan'],
                                    avatar=current_user.avatar,
                                    room=session["room-id"])
 
@@ -245,7 +360,7 @@ def on_game_message(message):
     if sid in player_channels:
         player_info = player_channels[sid]
         message_type = message.get('message_type')
-        
+
         if message_type == 'chat_message':
             room_id = player_info['room_id']
             chat_channel = f"room:{room_id}:chat"
@@ -286,18 +401,19 @@ def poker_game(data, connection_channel: str):
 
     player_id = session["player-id"]
     player_name = session["player-name"]
-    player_money = session["player-money"]
-    player_loan = session["player-loan"]
     
+    # 每次加入游戏前检查是否需要每日重置 (Daily Check)
+    # 这确保了长连接用户跨天也能触发重置
+    player_money = check_and_reset_daily_chips(player_id)
+    session["player-money"] = player_money
+
     player_avatar = None
     if current_user.is_authenticated:
         player_avatar = current_user.avatar
     else:
-        conn = get_db_connection()
-        user_data = conn.execute("SELECT avatar FROM users WHERE id = ?", (player_id,)).fetchone()
-        conn.close()
+        user_data = get_player_by_id(player_id)
         if user_data:
-            player_avatar = user_data["avatar"] if "avatar" in user_data.keys() else None
+            player_avatar = user_data["avatar"]
 
     # 如果头像数据过大，截断或置空
     if player_avatar and len(player_avatar) > 50000:
@@ -313,7 +429,6 @@ def poker_game(data, connection_channel: str):
                 id=player_id,
                 name=player_name,
                 money=player_money,
-                loan=player_loan,
                 avatar=player_avatar,
                 ready=False,
             ),
@@ -348,7 +463,7 @@ def poker_game(data, connection_channel: str):
                 # Default to chat_message if not specified (for backward compatibility if any)
                 if 'message_type' not in data:
                     data['message_type'] = 'chat_message'
-                
+
                 socketio.emit('game_message', data, room=channel_to_ws)
 
     game_loop = gevent.spawn(game_message_handler, server_channel, request.sid)

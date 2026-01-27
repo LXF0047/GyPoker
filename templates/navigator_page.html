@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Poker Lobby</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="/static/js/tailwindcss.js"></script>
+    <!-- 引入 Lucide 图标库 -->
+    <script src="/static/js/lucide.min.js"></script>
+    
+    <style>
+        /* 3D 翻转核心样式 - 兼容 Safari */
+        .perspective-1000 { 
+            perspective: 1000px; 
+            -webkit-perspective: 1000px;
+        }
+        .transform-style-3d { 
+            transform-style: preserve-3d; 
+            -webkit-transform-style: preserve-3d;
+        }
+        .backface-hidden { 
+            backface-visibility: hidden; 
+            -webkit-backface-visibility: hidden;
+            /* Safari 渲染优化 hack */
+            transform: translate3d(0,0,0);
+            -webkit-transform: translate3d(0,0,0);
+        }
+        .rotate-y-180 { 
+            transform: rotateY(180deg); 
+            -webkit-transform: rotateY(180deg);
+        }
+        
+        /* 漂浮动画 */
+        @keyframes float {
+          0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+          20% { opacity: 0.1; }
+          80% { opacity: 0.1; }
+          100% { transform: translateY(-20vh) rotate(360deg); opacity: 0; }
+        }
+        .animate-float {
+          animation-name: float;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+
+        /* 卡背高级纹理 */
+        .card-back-pattern {
+          background-color: #0f172a;
+          background-image: 
+            linear-gradient(30deg, #1e293b 12%, transparent 12.5%, transparent 87%, #1e293b 87.5%, #1e293b),
+            linear-gradient(150deg, #1e293b 12%, transparent 12.5%, transparent 87%, #1e293b 87.5%, #1e293b),
+            linear-gradient(30deg, #1e293b 12%, transparent 12.5%, transparent 87%, #1e293b 87.5%, #1e293b),
+            linear-gradient(150deg, #1e293b 12%, transparent 12.5%, transparent 87%, #1e293b 87.5%, #1e293b),
+            radial-gradient(circle at center, #d97706 0%, transparent 15%);
+          background-size: 20px 35px;
+          background-position: 0 0, 0 0, 10px 18px, 10px 18px, 0 0;
+          box-shadow: inset 0 0 40px #000;
+        }
+
+        /* 自定义滚动条样式 (适配移动端滚动体验) */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569; 
+        }
+
+        /* Fix for input interaction on flipped cards */
+        /* Default state: Back face (child 1) is active */
+        .transform-style-3d > div:nth-child(1) {
+            pointer-events: auto;
+        }
+        .transform-style-3d > div:nth-child(2) {
+            pointer-events: none;
+        }
+
+        /* Flipped state: Front face (child 2) is active */
+        .transform-style-3d.rotate-y-180 > div:nth-child(1) {
+            pointer-events: none;
+        }
+        .transform-style-3d.rotate-y-180 > div:nth-child(2) {
+            pointer-events: auto;
+        }
+
+        /* Avatar Upload Style */
+        .avatar-upload {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 10px;
+            cursor: pointer;
+        }
+        .avatar-preview {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 2px solid #d97706; /* amber-600 */
+            background-size: cover;
+            background-position: center;
+            background-color: #1e293b;
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #d97706;
+            font-size: 1.5rem;
+        }
+        .avatar-upload:hover .avatar-preview {
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+            filter: brightness(1.1);
+        }
+        .avatar-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .avatar-upload:hover .avatar-overlay {
+            opacity: 1;
+        }
+        .avatar-overlay span {
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-950 via-black to-black flex flex-col overflow-x-hidden overflow-y-auto relative font-sans text-slate-200">
+
+    <!-- 背景层 -->
+    <div class="fixed inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-emerald-950/30 via-black to-black z-0 pointer-events-none"></div>
+    
+    <!-- 漂浮图标容器 -->
+    <div id="floating-icons" class="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <!-- JS 会在这里动态注入漂浮的花色 -->
+    </div>
+
+    <!-- 右上角用户信息 (响应式位置调整) -->
+    <div class="absolute top-0 right-0 p-4 md:p-8 flex justify-end items-center z-30 text-emerald-100/60 pointer-events-none">
+        <div class="flex items-center space-x-2 md:space-x-3 bg-black/40 p-1.5 md:p-2 rounded-full border border-white/5 backdrop-blur-md pointer-events-auto cursor-pointer hover:bg-black/60 transition-colors" onclick="toggleProfileModal()">
+           <div class="text-right mr-1 md:mr-2">
+            <div class="text-xs md:text-sm text-amber-100 font-medium">{{ username }}</div>
+            <div class="text-[10px] md:text-xs text-amber-500 font-mono">${{ money }}</div>
+          </div>
+          <div class="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-amber-400 to-amber-700 flex items-center justify-center text-slate-900 font-bold border-2 border-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.4)] text-xs md:text-base overflow-hidden">
+            {% if avatar and 'data:image' in avatar %}
+                <img src="{{ avatar }}" class="w-full h-full object-cover">
+            {% else %}
+                {{ avatar if avatar else 'K' }}
+            {% endif %}
+          </div>
+        </div>
+    </div>
+
+    <!-- 主容器：确保最小高度为屏幕高度，并在垂直方向上居中内容 -->
+    <div class="relative z-10 w-full min-h-screen flex flex-col items-center justify-center py-24 md:py-0">
+        
+        <!-- 卡片Flex布局容器：移动端垂直排列，桌面端水平排列 -->
+        <div class="flex flex-col md:flex-row justify-center items-center gap-6 md:gap-8 lg:gap-12 w-full max-w-7xl px-4" id="cards-container">
+            
+            <!-- Card 1: 加入房间 -->
+            <!-- 响应式宽度：w-[260px] (移动) -> md:w-[280px] (桌面) -->
+            <div class="card-wrapper relative w-[260px] h-[360px] md:w-[280px] md:h-[380px] cursor-pointer group perspective-1000 shrink-0" onclick="toggleCard(0)">
+                <div id="card-inner-0" class="relative w-full h-full duration-700 transition-all transform-style-3d shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+                    
+                    <!-- Back -->
+                    <div class="absolute inset-0 w-full h-full backface-hidden rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <div class="absolute inset-2 border border-amber-500/30 rounded-lg z-10"></div>
+                        <div class="absolute inset-0 card-back-pattern opacity-100"></div>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center z-20">
+                            <div class="w-16 h-16 md:w-20 md:h-20 rounded-full bg-black/80 border border-amber-500/50 flex items-center justify-center text-amber-500 shadow-2xl mb-4 backdrop-blur-sm">
+                                <i data-lucide="users" class="w-6 h-6 md:w-8 md:h-8"></i>
+                            </div>
+                            <h2 class="text-lg md:text-xl font-bold text-amber-100 tracking-[0.2em] uppercase drop-shadow-md">加入牌局</h2>
+                            <p class="text-[10px] text-amber-500/60 mt-2 tracking-[0.3em]">JOIN ROOM</p>
+                        </div>
+                    </div>
+
+                    <!-- Front -->
+                    <div class="absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-xl overflow-hidden bg-neutral-900 border border-amber-600/50 shadow-inner">
+                        <div class="absolute top-0 left-0 w-full h-full opacity-20 bg-[radial-gradient(#d97706_1px,transparent_1px)] [background-size:20px_20px]"></div>
+                        <div class="absolute inset-3 border border-amber-500/20 rounded z-0 pointer-events-none"></div>
+                        
+                        <!-- Corners -->
+                        <div class="absolute top-3 left-4 flex flex-col items-center leading-none opacity-100 z-10">
+                            <span class="text-lg md:text-xl font-bold font-serif text-amber-500">A</span>
+                            <span class="text-amber-600 text-xs md:text-sm">♠</span>
+                        </div>
+                        <div class="absolute bottom-3 right-4 flex flex-col items-center leading-none rotate-180 opacity-100 z-10">
+                            <span class="text-lg md:text-xl font-bold font-serif text-amber-500">A</span>
+                            <span class="text-amber-600 text-xs md:text-sm">♠</span>
+                        </div>
+
+                        <!-- Content -->
+                        <div class="relative z-20 w-full h-full flex flex-col p-4 md:p-6">
+                            <div class="absolute top-3 right-3 text-amber-900/40 hover:text-amber-500 transition-colors z-30 p-2" onclick="event.stopPropagation(); closeCard(0)">
+                                <i data-lucide="x" width="18" height="18"></i>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-center space-y-4 md:space-y-6">
+                                <h3 class="text-lg md:text-xl font-bold text-amber-500 border-b border-amber-500/30 pb-2 tracking-wider">输入房间号</h3>
+                                <form action="/join" method="post" class="w-full max-w-[90%] md:max-w-[80%] flex flex-col space-y-3 md:space-y-4" onclick="event.stopPropagation()">
+                                    <input type="hidden" name="action" value="join">
+                                    <input type="text" name="room-id" placeholder="0000" class="w-full bg-black/50 border border-amber-700/50 rounded px-3 py-2 md:px-4 md:py-3 text-center text-xl md:text-2xl font-mono tracking-widest text-amber-100 placeholder-amber-900/50 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
+                                           onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" required>
+                                    <button type="submit" class="w-full bg-gradient-to-r from-amber-700 to-amber-600 text-black py-2.5 md:py-3 rounded font-bold hover:from-amber-600 hover:to-amber-500 transition-all flex items-center justify-center space-x-2 group shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                                        <span class="text-sm md:text-base">加入房间</span>
+                                        <i data-lucide="arrow-right" class="w-4 h-4 md:w-[18px] md:h-[18px] group-hover:translate-x-1 transition-transform"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: 生涯数据 -->
+            <div class="card-wrapper relative w-[260px] h-[360px] md:w-[280px] md:h-[380px] cursor-pointer group perspective-1000 shrink-0" onclick="toggleCard(1)">
+                <div id="card-inner-1" class="relative w-full h-full duration-700 transition-all transform-style-3d shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+                    <!-- Back -->
+                    <div class="absolute inset-0 w-full h-full backface-hidden rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <div class="absolute inset-2 border border-amber-500/30 rounded-lg z-10"></div>
+                        <div class="absolute inset-0 card-back-pattern opacity-100"></div>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center z-20">
+                            <div class="w-16 h-16 md:w-20 md:h-20 rounded-full bg-black/80 border border-amber-500/50 flex items-center justify-center text-amber-500 shadow-2xl mb-4 backdrop-blur-sm">
+                                <i data-lucide="trophy" class="w-6 h-6 md:w-8 md:h-8"></i>
+                            </div>
+                            <h2 class="text-lg md:text-xl font-bold text-amber-100 tracking-[0.2em] uppercase drop-shadow-md">生涯数据</h2>
+                            <p class="text-[10px] text-amber-500/60 mt-2 tracking-[0.3em]">CAREER STATS</p>
+                        </div>
+                    </div>
+
+                    <!-- Front -->
+                    <div class="absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-xl overflow-hidden bg-neutral-900 border border-amber-600/50 shadow-inner">
+                        <div class="absolute top-0 left-0 w-full h-full opacity-20 bg-[radial-gradient(#d97706_1px,transparent_1px)] [background-size:20px_20px]"></div>
+                        <div class="absolute inset-3 border border-amber-500/20 rounded z-0 pointer-events-none"></div>
+                        
+                        <div class="absolute top-3 left-4 flex flex-col items-center leading-none opacity-100 z-10">
+                            <span class="text-lg md:text-xl font-bold font-serif text-amber-500">K</span>
+                            <span class="text-amber-600 text-xs md:text-sm">♠</span>
+                        </div>
+                        <div class="absolute bottom-3 right-4 flex flex-col items-center leading-none rotate-180 opacity-100 z-10">
+                            <span class="text-lg md:text-xl font-bold font-serif text-amber-500">K</span>
+                            <span class="text-amber-600 text-xs md:text-sm">♠</span>
+                        </div>
+
+                        <div class="relative z-20 w-full h-full flex flex-col p-4 md:p-6">
+                            <div class="absolute top-3 right-3 text-amber-900/40 hover:text-amber-500 transition-colors z-30 p-2" onclick="event.stopPropagation(); closeCard(1)">
+                                <i data-lucide="x" width="18" height="18"></i>
+                            </div>
+                            <div class="flex flex-col h-full w-full p-1 md:p-2">
+                                <div class="grid grid-cols-2 gap-2 md:gap-3 flex-1">
+                                    <!-- Stat Items -->
+                                    <div class="bg-black/40 border border-amber-900/30 rounded p-1.5 md:p-2 flex flex-col items-center justify-center shadow-inner group hover:border-amber-500/50 transition-colors">
+                                        <span class="text-lg md:text-xl font-bold font-mono text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.3)]">{{ stats.vpip }}</span>
+                                        <span class="text-[10px] md:text-xs font-bold text-amber-700 mt-1 uppercase tracking-wide">VPIP</span>
+                                        <span class="text-[8px] md:text-[9px] text-amber-900/60 scale-90">入池率</span>
+                                    </div>
+                                    <div class="bg-black/40 border border-amber-900/30 rounded p-1.5 md:p-2 flex flex-col items-center justify-center shadow-inner group hover:border-amber-500/50 transition-colors">
+                                        <span class="text-lg md:text-xl font-bold font-mono text-amber-400 drop-shadow-[0_0_5px_rgba(245,158,11,0.3)]">{{ stats.pfr }}</span>
+                                        <span class="text-[10px] md:text-xs font-bold text-amber-700 mt-1 uppercase tracking-wide">PFR</span>
+                                        <span class="text-[8px] md:text-[9px] text-amber-900/60 scale-90">翻钱加注率</span>
+                                    </div>
+                                    <div class="bg-black/40 border border-amber-900/30 rounded p-1.5 md:p-2 flex flex-col items-center justify-center shadow-inner group hover:border-amber-500/50 transition-colors">
+                                        <span class="text-lg md:text-xl font-bold font-mono text-amber-300 drop-shadow-[0_0_5px_rgba(245,158,11,0.3)]">{{ stats.win_rate }}</span>
+                                        <span class="text-[10px] md:text-xs font-bold text-amber-700 mt-1 uppercase tracking-wide">Win Rate</span>
+                                        <span class="text-[8px] md:text-[9px] text-amber-900/60 scale-90">净胜筹码</span>
+                                    </div>
+                                    <div class="bg-black/40 border border-amber-900/30 rounded p-1.5 md:p-2 flex flex-col items-center justify-center shadow-inner group hover:border-amber-500/50 transition-colors">
+                                        <span class="text-lg md:text-xl font-bold font-mono text-amber-500 drop-shadow-[0_0_5px_rgba(245,158,11,0.3)]">{{ stats.hands }}</span>
+                                        <span class="text-[10px] md:text-xs font-bold text-amber-700 mt-1 uppercase tracking-wide">Hands</span>
+                                        <span class="text-[8px] md:text-[9px] text-amber-900/60 scale-90">总游戏局数</span>
+                                    </div>
+                                </div>
+                                <a href="/analysis" onclick="event.stopPropagation()" class="mt-3 md:mt-4 text-[10px] md:text-xs text-amber-700 hover:text-amber-400 transition-colors uppercase tracking-widest text-center w-full">完整数据分析 &gt;</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: 今日运势 -->
+            <div class="card-wrapper relative w-[260px] h-[360px] md:w-[280px] md:h-[380px] cursor-pointer group perspective-1000 shrink-0" onclick="toggleCard(2)">
+                <div id="card-inner-2" class="relative w-full h-full duration-700 transition-all transform-style-3d shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+                    <!-- Back -->
+                    <div class="absolute inset-0 w-full h-full backface-hidden rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <div class="absolute inset-2 border border-amber-500/30 rounded-lg z-10"></div>
+                        <div class="absolute inset-0 card-back-pattern opacity-100"></div>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center z-20">
+                            <div class="w-16 h-16 md:w-20 md:h-20 rounded-full bg-black/80 border border-amber-500/50 flex items-center justify-center text-amber-500 shadow-2xl mb-4 backdrop-blur-sm">
+                                <i data-lucide="sparkles" class="w-6 h-6 md:w-8 md:h-8"></i>
+                            </div>
+                            <h2 class="text-lg md:text-xl font-bold text-amber-100 tracking-[0.2em] uppercase drop-shadow-md">今日狗运</h2>
+                            <p class="text-[10px] text-amber-500/60 mt-2 tracking-[0.3em]">DAILY FORTUNE</p>
+                        </div>
+                    </div>
+
+                    <!-- Front -->
+                    <div class="absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-xl overflow-hidden bg-neutral-900 border border-amber-600/50 shadow-inner">
+                        <div class="absolute top-0 left-0 w-full h-full opacity-20 bg-[radial-gradient(#d97706_1px,transparent_1px)] [background-size:20px_20px]"></div>
+                        <div class="absolute inset-3 border border-amber-500/20 rounded z-0 pointer-events-none"></div>
+                        
+                        <div class="absolute top-3 left-4 flex flex-col items-center leading-none opacity-100 z-10">
+                            <span class="text-lg md:text-xl font-bold font-serif text-amber-500">Q</span>
+                            <span class="text-amber-600 text-xs md:text-sm">♠</span>
+                        </div>
+                        <div class="absolute bottom-3 right-4 flex flex-col items-center leading-none rotate-180 opacity-100 z-10">
+                            <span class="text-lg md:text-xl font-bold font-serif text-amber-500">Q</span>
+                            <span class="text-amber-600 text-xs md:text-sm">♠</span>
+                        </div>
+
+                        <div class="relative z-20 w-full h-full flex flex-col p-4 md:p-6">
+                            <div class="absolute top-3 right-3 text-amber-900/40 hover:text-amber-500 transition-colors z-30 p-2" onclick="event.stopPropagation(); closeCard(2)">
+                                <i data-lucide="x" width="18" height="18"></i>
+                            </div>
+                            <div class="flex flex-col h-full w-full items-center justify-center p-2 md:p-4 text-center">
+                                <div class="mb-3 md:mb-4">
+                                    <div id="sparkle-icon" class="transition-all duration-700 rotate-0 opacity-100 scale-100">
+                                        <i data-lucide="sparkles" class="w-10 h-10 md:w-12 md:h-12 text-amber-500 mx-auto drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]"></i>
+                                    </div>
+                                </div>
+                                <div id="fortune-content" class="transition-opacity duration-500 opacity-100">
+                                    <h3 class="text-lg md:text-xl font-serif text-amber-100 font-bold mb-3 md:mb-4 tracking-wider">今日狗运</h3>
+                                    <p id="fortune-text" class="text-sm md:text-base text-amber-200/80 italic font-medium leading-relaxed font-serif">
+                                        "Tap to reveal..."
+                                    </p>
+                                </div>
+                                <div class="mt-6 md:mt-8 text-[10px] md:text-xs text-amber-800 font-bold tracking-[0.3em] uppercase opacity-60">
+                                    Good Luck
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- User Profile Modal -->
+    <div id="profile-modal" class="fixed inset-0 z-50 hidden">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity opacity-0" id="profile-backdrop" onclick="toggleProfileModal()"></div>
+        
+        <!-- Modal Card -->
+        <div class="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div class="bg-slate-900 border border-amber-500/30 rounded-2xl w-full max-w-md p-6 md:p-8 relative transform scale-95 opacity-0 transition-all duration-300 pointer-events-auto shadow-[0_0_50px_rgba(0,0,0,0.8)]" id="profile-card">
+                
+                <!-- Close Button -->
+                <button class="absolute top-4 right-4 text-amber-900/50 hover:text-amber-500 transition-colors" onclick="toggleProfileModal()">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-amber-500 tracking-wider uppercase">玩家信息</h2>
+                    <p class="text-xs text-amber-800 tracking-[0.2em] mt-1">信息修改</p>
+                </div>
+
+                <form id="profile-form" onsubmit="handleProfileUpdate(event)" class="space-y-5">
+                    <!-- Avatar Selection -->
+                    <div>
+                        <label class="block text-amber-700 text-xs font-bold uppercase tracking-wider mb-2 text-center">修改头像</label>
+                        <div class="avatar-upload" onclick="document.getElementById('avatar-input').click()">
+                            <div class="avatar-preview" id="avatar-preview">
+                                {% if avatar and 'data:image' in avatar %}
+                                    <!-- Background image set by JS or style if possible, but safer to use explicit img or style -->
+                                {% else %}
+                                    {{ avatar if avatar else 'K' }}
+                                {% endif %}
+                            </div>
+                            <div class="avatar-overlay">
+                                <span>+</span>
+                            </div>
+                            <input type="file" id="avatar-input" accept="image/*" class="hidden" onchange="handleAvatarUpload(this)">
+                            <input type="hidden" name="avatar" id="avatar-data" value="{{ avatar }}">
+                        </div>
+                    </div>
+
+                    <!-- Username -->
+                    <div>
+                        <label class="block text-amber-700 text-xs font-bold uppercase tracking-wider mb-1">修改玩家昵称</label>
+                        <div class="relative">
+                            <input type="text" name="nickname" value="{{ username }}" class="w-full bg-black/40 border border-slate-700 rounded px-4 py-2 text-amber-100 placeholder-slate-700 focus:outline-none focus:border-amber-500/50 transition-colors text-sm font-mono">
+                            <i data-lucide="user" class="absolute right-3 top-2.5 w-4 h-4 text-slate-700"></i>
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div>
+                        <label class="block text-amber-700 text-xs font-bold uppercase tracking-wider mb-1">修改密码(可选)</label>
+                        <div class="relative">
+                            <input type="password" name="password" placeholder="不修改就不填，填了就是新密码" class="w-full bg-black/40 border border-slate-700 rounded px-4 py-2 text-amber-100 placeholder-slate-700 focus:outline-none focus:border-amber-500/50 transition-colors text-sm font-mono">
+                            <i data-lucide="lock" class="absolute right-3 top-2.5 w-4 h-4 text-slate-700"></i>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="pt-2 flex gap-3">
+                         <button type="button" onclick="toggleProfileModal()" class="flex-1 py-2 rounded border border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500 transition-colors text-sm font-bold uppercase tracking-wide">取消</button>
+                        <button type="submit" class="flex-1 bg-gradient-to-r from-amber-700 to-amber-600 text-black py-2 rounded font-bold hover:from-amber-600 hover:to-amber-500 transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)] text-sm uppercase tracking-wide">保存修改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 逻辑 (保持不变) -->
+    <script>
+        // 初始化 Lucide 图标
+        lucide.createIcons();
+
+        let activeCardIndex = null;
+
+        // 生成背景漂浮元素
+        const suits = ['spade', 'heart', 'club', 'diamond'];
+        const container = document.getElementById('floating-icons');
+        for (let i = 0; i < 4; i++) {
+            const div = document.createElement('div');
+            div.className = 'absolute text-white/5 animate-float pointer-events-none';
+            div.style.left = [10, 30, 60, 85][i] + '%';
+            div.style.animationDelay = [0, 5, 2, 7][i] + 's';
+            div.style.animationDuration = [15, 12, 18, 14][i] + 's';
+            div.style.bottom = '-50px';
+            
+            // 使用 Lucide 的 SVG 字符串简化实现
+            const iconName = suits[i];
+            div.innerHTML = `<i data-lucide="${iconName}" width="48" height="48"></i>`;
+            container.appendChild(div);
+        }
+        lucide.createIcons(); 
+
+        // 切换卡片状态
+        async function toggleCard(index) {
+            const cardInner = document.getElementById(`card-inner-${index}`);
+            
+            // 如果点击的是已经打开的卡片，则关闭它
+            if (activeCardIndex === index) {
+                closeCard(index);
+                return;
+            }
+
+            // 如果有其他卡片打开，先关闭其他卡片
+            if (activeCardIndex !== null) {
+                document.getElementById(`card-inner-${activeCardIndex}`).classList.remove('rotate-y-180');
+            }
+
+            // 打开当前卡片
+            cardInner.classList.add('rotate-y-180');
+            activeCardIndex = index;
+
+            // 如果是运势卡 (Index 2)，触发获取运势逻辑
+            if (index === 2) {
+                playFortuneAnimation();
+                try {
+                    const response = await fetch('/api/fortune', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({})
+                    });
+                    const data = await response.json();
+                    if (data.content) {
+                        updateFortuneText(data.content);
+                    } else {
+                         throw new Error("No content");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    updateFortuneText("茫茫前路运势不定");
+                }
+            }
+        }
+
+        function closeCard(index) {
+            const cardInner = document.getElementById(`card-inner-${index}`);
+            cardInner.classList.remove('rotate-y-180');
+            if (activeCardIndex === index) {
+                activeCardIndex = null;
+            }
+        }
+
+        function playFortuneAnimation() {
+            const icon = document.getElementById('sparkle-icon');
+            const content = document.getElementById('fortune-content');
+            
+            icon.classList.add('rotate-180', 'opacity-0', 'scale-50');
+            content.classList.add('opacity-0');
+        }
+
+        function updateFortuneText(text) {
+            setTimeout(() => {
+                const icon = document.getElementById('sparkle-icon');
+                const content = document.getElementById('fortune-content');
+                const textEl = document.getElementById('fortune-text');
+
+                textEl.innerText = `"${text}"`;
+                
+                icon.classList.remove('rotate-180', 'opacity-0', 'scale-50');
+                content.classList.remove('opacity-0');
+            }, 500);
+        }
+
+        // Profile Modal Logic
+        function toggleProfileModal() {
+            const modal = document.getElementById('profile-modal');
+            const backdrop = document.getElementById('profile-backdrop');
+            const card = document.getElementById('profile-card');
+            
+            if (modal.classList.contains('hidden')) {
+                // Open
+                modal.classList.remove('hidden');
+                // Small delay to allow display:block to apply before transition
+                setTimeout(() => {
+                    backdrop.classList.remove('opacity-0');
+                    card.classList.remove('opacity-0', 'scale-95');
+                }, 10);
+            } else {
+                // Close
+                backdrop.classList.add('opacity-0');
+                card.classList.add('opacity-0', 'scale-95');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                }, 300);
+            }
+        }
+
+        async function handleProfileUpdate(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+            const data = {};
+            
+            formData.forEach((value, key) => {
+                if (value) data[key] = value;
+            });
+            
+            try {
+                const btn = form.querySelector('button[type="submit"]');
+                const originalText = btn.innerText;
+                btn.disabled = true;
+                btn.innerText = "SAVING...";
+                
+                const response = await fetch('/api/update-profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    location.reload();
+                } else {
+                    alert('Update failed: ' + (result.message || 'Unknown error'));
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                }
+            } catch (e) {
+                console.error(e);
+                alert('An error occurred');
+                // btn might not be defined here if error happened before
+                const btn = form.querySelector('button[type="submit"]');
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        // Pre-select avatar
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentAvatar = "{{ avatar }}";
+            const preview = document.getElementById('avatar-preview');
+            
+            if (currentAvatar && currentAvatar.startsWith('data:image')) {
+                preview.style.backgroundImage = `url(${currentAvatar})`;
+                preview.innerText = ''; // Clear text if image
+            }
+        });
+
+        function handleAvatarUpload(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+
+                // 检查文件大小 (限制为 500KB)
+                if (file.size > 500 * 1024) {
+                    alert("图片大小不能超过 500KB");
+                    input.value = '';
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.src = e.target.result;
+
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+
+                        const MAX_WIDTH = 100;
+                        const MAX_HEIGHT = 100;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.5);
+
+                        const preview = document.getElementById('avatar-preview');
+                        preview.style.backgroundImage = `url(${compressedDataUrl})`;
+                        preview.innerText = '';
+                        document.getElementById('avatar-data').value = compressedDataUrl;
+                    };
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+    </script>
+</body>
+</html>

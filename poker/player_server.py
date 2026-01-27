@@ -90,4 +90,3 @@ class PlayerServer(Player):
                     # Channel updated, retry with new channel
                     continue
                 raise ChannelError("Client disconnected")
-
