@@ -1250,6 +1250,19 @@ function toggleSidebar() {
     document.getElementById('sidebar-overlay').classList.toggle('active');
 }
 
+function toggleSidebarDesktop() {
+    const sidebar = document.getElementById('sidebar');
+    const showBtn = document.getElementById('desktop-show-sidebar');
+    
+    sidebar.classList.toggle('collapsed');
+    
+    if (sidebar.classList.contains('collapsed')) {
+        showBtn.style.display = 'flex';
+    } else {
+        showBtn.style.display = 'none';
+    }
+}
+
 function switchTab(tab, event) {
     document.getElementById('panel-chat').style.display = tab === 'chat' ? 'flex' : 'none';
     document.getElementById('panel-rank').style.display = tab === 'rank' ? 'block' : 'none';

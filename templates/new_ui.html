@@ -73,9 +73,18 @@
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
     <button class="mobile-toggle" onclick="toggleSidebar()">☰</button>
 
+    <!-- Desktop Sidebar Toggle (Show) -->
+    <button id="desktop-show-sidebar" class="desktop-sidebar-toggle show-btn" onclick="toggleSidebarDesktop()" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h1>Gouyun Poker</h1>
+            <!-- Desktop Sidebar Toggle (Hide) -->
+            <button class="desktop-sidebar-toggle hide-btn" onclick="toggleSidebarDesktop()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
         </div>
         <div class="tab-nav">
             <button class="tab-btn active" onclick="switchTab('chat', event)">友好交流</button>

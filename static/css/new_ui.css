@@ -51,6 +51,7 @@ body {
     text-align: center;
     border-bottom: 1px solid rgba(212, 175, 55, 0.2);
     background: linear-gradient(180deg, rgba(212,175,55,0.08) 0%, transparent 100%);
+    position: relative; /* Added for toggle button positioning */
 }
 
 .sidebar-header h1 {
@@ -1518,4 +1519,56 @@ input[type=range]::-webkit-slider-thumb:hover {
     0% { transform: translateY(0); opacity: 0; }
     20% { opacity: 1; }
     100% { transform: translateY(-20px); opacity: 1; }
+}
+
+/* Desktop Sidebar Toggle Styles */
+.desktop-sidebar-toggle {
+    background: none;
+    border: none;
+    color: var(--accent-gold);
+    cursor: pointer;
+    display: none;
+}
+
+@media (min-width: 1025px) {
+    .desktop-sidebar-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .desktop-sidebar-toggle.show-btn {
+        position: fixed;
+        left: 0;
+        top: 20px;
+        z-index: 200;
+        background: rgba(15, 15, 15, 0.8);
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        border-left: none;
+        border-radius: 0 8px 8px 0;
+        padding: 10px 5px;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    }
+    
+    .desktop-sidebar-toggle.hide-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        padding: 5px;
+        border-radius: 5px;
+        transition: background 0.2s;
+    }
+    
+    .desktop-sidebar-toggle.hide-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .sidebar {
+        transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sidebar.collapsed {
+        margin-left: -320px;
+    }
 }
