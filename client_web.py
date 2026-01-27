@@ -141,10 +141,10 @@ def register():
         success = create_player(email, hashed_password, username, avatar)
 
         if success:
-            flash("Registration successful! Please log in.")
+            flash("注册成功！请登录", "success")
             return redirect(url_for("login"))
         else:
-            flash("Registration failed. Please try again.")
+            flash("注册失败。请重试")
             return render_template("new_login.html", mode="register")
 
     return render_template("new_login.html", mode="register")
@@ -200,7 +200,7 @@ def reset_password():
     success = update_player_profile(user_data["id"], password_hash=hashed_password)
 
     if success:
-        flash("Password reset successful! Please log in.")
+        flash("Password reset successful! Please log in.", "success")
         return redirect(url_for("login"))
     else:
         flash("Password reset failed. Please try again.")
@@ -416,7 +416,7 @@ def poker_game(data, connection_channel: str):
             player_avatar = user_data["avatar"]
 
     # 如果头像数据过大，截断或置空
-    if player_avatar and len(player_avatar) > 50000:
+    if player_avatar and len(player_avatar) > 150000:
         player_avatar = None
 
     room_id = session["room-id"]

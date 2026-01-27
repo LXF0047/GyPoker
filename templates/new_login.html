@@ -251,6 +251,60 @@
         #avatar-input {
             display: none;
         }
+
+        /* Cropper Modal Styles */
+        #cropper-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        #cropper-modal.active {
+            display: flex;
+        }
+        .cropper-content {
+            background: #111;
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid var(--gold);
+            width: 300px;
+            max-width: 90%;
+            text-align: center;
+        }
+        .crop-area {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #333;
+            background: #000;
+            cursor: grab;
+            touch-action: none;
+        }
+        .crop-area:active {
+            cursor: grabbing;
+        }
+        .crop-mask {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border-radius: 50%;
+            border: 2px solid var(--gold);
+            box-shadow: 0 0 0 100px rgba(0,0,0,0.7);
+            pointer-events: none;
+            z-index: 10;
+        }
+        #crop-img {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: center;
+            /* transform will be set by JS */
+            max-width: none;
+        }
     </style>
     {% endif %}
 </head>
@@ -403,13 +457,13 @@
             <div class="w-32 h-px bg-gradient-to-r from-transparent via-[#d4af37] to-transparent mx-auto mt-4"></div>
         </div>
 
-        {% with messages = get_flashed_messages() %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-                <div class="mb-4 p-3 bg-red-900/50 border border-red-500 text-red-200 rounded text-sm text-center">
-                    {% for message in messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-3 {% if category == 'success' %}bg-green-900/50 border-green-500 text-green-200{% else %}bg-red-900/50 border-red-500 text-red-200{% endif %} border rounded text-sm text-center">
                         <p>{{ message }}</p>
-                    {% endfor %}
-                </div>
+                    </div>
+                {% endfor %}
             {% endif %}
         {% endwith %}
 
@@ -504,73 +558,196 @@
             </div>
         </form>
 
+
+
+        <!-- Cropper Modal -->
+        <div id="cropper-modal">
+            <div class="cropper-content">
+                <h3 class="text-[#d4af37] text-lg font-bold mb-4">头像设置</h3>
+                
+                <div class="crop-area" id="crop-area">
+                    <img id="crop-img" src="" alt="Avatar">
+                    <div class="crop-mask"></div>
+                </div>
+
+                <div class="mt-4 flex items-center justify-center space-x-2">
+                    <span class="text-xs text-gray-400">-</span>
+                    <input type="range" id="zoom-slider" min="0.5" max="3" step="0.05" value="1" 
+                           class="w-32 accent-[#d4af37] h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    <span class="text-xs text-gray-400">+</span>
+                </div>
+
+                <div class="mt-6 flex justify-between px-4">
+                    <button onclick="cancelCrop()" class="text-sm text-gray-400 hover:text-white transition">取消</button>
+                    <button onclick="saveCrop()" class="text-sm bg-[#d4af37] text-black px-4 py-1 rounded font-bold hover:bg-[#b5952f] transition">确认</button>
+                </div>
+            </div>
+        </div>
+
         <script>
+            let cropperState = {
+                img: null,
+                fileSize: 0,
+                posX: 0,
+                posY: 0,
+                scale: 1,
+                baseScale: 1,
+                isDragging: false,
+                startX: 0,
+                startY: 0
+            };
+
+            const cropArea = document.getElementById('crop-area');
+            const cropImg = document.getElementById('crop-img');
+            const zoomSlider = document.getElementById('zoom-slider');
+            const modal = document.getElementById('cropper-modal');
+
             function handleAvatarUpload(input) {
                 if (input.files && input.files[0]) {
                     const file = input.files[0];
-
-                    // 检查文件大小 (限制为 500KB)
-                    if (file.size > 500 * 1024) {
-                        showToast("图片大小不能超过 500KB");
-                        input.value = '';
-                        return;
-                    }
+                    cropperState.fileSize = file.size;
 
                     const reader = new FileReader();
                     reader.onload = function(e) {
-                        // 创建图片对象以进行压缩
-                        const img = new Image();
-                        img.src = e.target.result;
-
-                        img.onload = function() {
-                            // 创建 canvas 进行压缩
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-
-                            // 设置最大尺寸
-                            const MAX_WIDTH = 100;
-                            const MAX_HEIGHT = 100;
-                            let width = img.width;
-                            let height = img.height;
-
-                            if (width > height) {
-                                if (width > MAX_WIDTH) {
-                                    height *= MAX_WIDTH / width;
-                                    width = MAX_WIDTH;
-                                }
-                            } else {
-                                if (height > MAX_HEIGHT) {
-                                    width *= MAX_HEIGHT / height;
-                                    height = MAX_HEIGHT;
-                                }
-                            }
-
-                            canvas.width = width;
-                            canvas.height = height;
-                            ctx.drawImage(img, 0, 0, width, height);
-
-                            // 转换为 base64
-                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.5);
-
-                            // 更新预览和隐藏域
-                            document.getElementById('avatar-preview').style.backgroundImage = `url(${compressedDataUrl})`;
-                            document.getElementById('avatar-data').value = compressedDataUrl;
-
-                            // 上传成功后隐藏遮罩层，让用户看到新头像
-                            document.getElementById('avatar-overlay').style.opacity = '0';
-
-                            // 鼠标悬停时再次显示遮罩层
-                            const uploadDiv = document.querySelector('.avatar-upload');
-                            uploadDiv.onmouseenter = function() {
-                                document.getElementById('avatar-overlay').style.opacity = '1';
-                            };
-                            uploadDiv.onmouseleave = function() {
-                                document.getElementById('avatar-overlay').style.opacity = '0';
-                            };
+                        cropImg.onload = function() {
+                            // Reset state
+                            cropperState.posX = 0;
+                            cropperState.posY = 0;
+                            
+                            // Calculate base scale to fit the image in 200x200
+                            // We use Math.min to ensure the image COVERS the crop area (min dimension = 200)
+                            const size = 200;
+                            const w = cropImg.naturalWidth;
+                            const h = cropImg.naturalHeight;
+                            cropperState.baseScale = size / Math.min(w, h);
+                            
+                            // Set initial scale to baseScale (1x zoom)
+                            zoomSlider.value = 1;
+                            cropperState.scale = cropperState.baseScale;
+                            
+                            updateTransform();
+                            
+                            modal.classList.add('active');
                         };
+                        cropImg.src = e.target.result;
                     };
                     reader.readAsDataURL(file);
                 }
+                // Clear input so same file can be selected again if cancelled
+                input.value = '';
+            }
+
+            function updateTransform() {
+                cropImg.style.transform = `translate(-50%, -50%) translate(${cropperState.posX}px, ${cropperState.posY}px) scale(${cropperState.scale})`;
+            }
+
+            // Drag Events
+            function startDrag(e) {
+                e.preventDefault();
+                cropperState.isDragging = true;
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                cropperState.startX = clientX - cropperState.posX;
+                cropperState.startY = clientY - cropperState.posY;
+            }
+
+            function doDrag(e) {
+                if (!cropperState.isDragging) return;
+                e.preventDefault();
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                cropperState.posX = clientX - cropperState.startX;
+                cropperState.posY = clientY - cropperState.startY;
+                updateTransform();
+            }
+
+            function endDrag() {
+                cropperState.isDragging = false;
+            }
+
+            cropArea.addEventListener('mousedown', startDrag);
+            cropArea.addEventListener('touchstart', startDrag, {passive: false});
+            
+            window.addEventListener('mousemove', doDrag);
+            window.addEventListener('touchmove', doDrag, {passive: false});
+            
+            window.addEventListener('mouseup', endDrag);
+            window.addEventListener('touchend', endDrag);
+
+            // Zoom
+            zoomSlider.addEventListener('input', function(e) {
+                // scale = zoomFactor * baseScale
+                const zoomFactor = parseFloat(e.target.value);
+                cropperState.scale = zoomFactor * cropperState.baseScale;
+                updateTransform();
+            });
+
+            function cancelCrop() {
+                modal.classList.remove('active');
+            }
+
+            function saveCrop() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Output size (150x150 is good for avatar)
+                const size = 150;
+                canvas.width = size;
+                canvas.height = size;
+
+                // Fill background (optional, in case of transparent images)
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, size, size);
+
+                // Math to map the visible area to canvas
+                // cropArea is 200x200. Center is 100,100.
+                // Image is drawn at Center + pos.
+                // We want to draw onto a 150x150 canvas.
+                // The center of canvas is 75,75.
+                
+                ctx.translate(size/2, size/2);
+                ctx.translate(cropperState.posX * (size/200), cropperState.posY * (size/200));
+                ctx.scale(cropperState.scale * (size/200), cropperState.scale * (size/200));
+                
+                // Draw image centered
+                ctx.drawImage(cropImg, -cropImg.naturalWidth/2, -cropImg.naturalHeight/2);
+
+                // Compress
+                // Strategy: If original > 500KB, force WebP. Else JPEG 0.9.
+                // Actually, WebP is generally better for avatars (small size, transparency support).
+                // Let's use WebP if > 500KB or default to JPEG/WebP logic.
+                let format = 'image/jpeg';
+                let quality = 0.9;
+
+                if (cropperState.fileSize > 500 * 1024) {
+                    format = 'image/webp';
+                    quality = 0.8; 
+                }
+
+                let dataUrl = canvas.toDataURL(format, quality);
+                
+                // If the browser doesn't support WebP, toDataURL falls back to PNG (which might be large).
+                // Check if we got a huge string. If so, try JPEG with lower quality.
+                if (dataUrl.length > 100000 && format === 'image/webp' && dataUrl.startsWith('data:image/png')) {
+                    // Fallback to JPEG if WebP not supported and resulted in PNG
+                    dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                }
+
+                // Update UI
+                document.getElementById('avatar-preview').style.backgroundImage = `url(${dataUrl})`;
+                document.getElementById('avatar-data').value = dataUrl;
+                
+                modal.classList.remove('active');
+                
+                // Setup hover effect again
+                const uploadDiv = document.querySelector('.avatar-upload');
+                document.getElementById('avatar-overlay').style.opacity = '0';
+                uploadDiv.onmouseenter = function() {
+                    document.getElementById('avatar-overlay').style.opacity = '1';
+                };
+                uploadDiv.onmouseleave = function() {
+                    document.getElementById('avatar-overlay').style.opacity = '0';
+                };
             }
         </script>
 
