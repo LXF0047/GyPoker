@@ -7,6 +7,73 @@
 {#    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Playfair+Display:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">#}
     <script src="/static/js/socket.io.js"></script>
     <link rel="stylesheet" href="/static/css/new_ui.css">
+
+    <!-- 引入 Tailwind CSS -->
+    <script src="/static/js/tailwindcss.js"></script>
+
+    <!-- 引入 Lucide Icons -->
+    <script src="/static/js/lucide.min.js"></script>
+
+    <!-- 引入 Google Fonts -->
+{#    <style>#}
+{#        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Playfair+Display:ital,wght@0,400;0,700;1,700&display=swap');#}
+{#    </style>#}
+
+    <!-- 配置 Tailwind 和 自定义动画 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                        cinzel: ['Cinzel', 'serif'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', "Liberation Mono", "Courier New", 'monospace'],
+                    },
+                    keyframes: {
+                        shimmer: {
+                            '0%': { left: '-100%' },
+                            '20%': { left: '200%' },
+                            '100%': { left: '200%' },
+                        },
+                        'intense-shimmer': {
+                            '0%': { left: '-100%', opacity: '0.5' },
+                            '100%': { left: '200%', opacity: '0.8' },
+                        },
+                        'fire-pulse': {
+                            '0%, 100%': {
+                                boxShadow: '0 0 20px rgba(220, 38, 38, 0.5), inset 0 0 10px rgba(234, 88, 12, 0.3)',
+                                borderColor: 'rgba(220, 38, 38, 0.8)'
+                            },
+                            '50%': {
+                                boxShadow: '0 0 50px rgba(234, 88, 12, 0.8), 0 0 20px rgba(251, 191, 36, 0.5), inset 0 0 30px rgba(251, 191, 36, 0.6)',
+                                borderColor: 'rgba(251, 191, 36, 1)',
+                                color: 'white'
+                            }
+                        },
+                        // 新增：整个面板的金色闪烁动画
+                        'gold-flash': {
+                            '0%, 100%': {
+                                boxShadow: '0 -15px 50px rgba(0,0,0,0.9)', // 保持原有阴影
+                                borderColor: 'rgba(113, 63, 18, 0.2)' // yellow-900/20 (原有边框)
+                            },
+                            '50%': {
+                                // 金色大光晕 + 内发光
+                                boxShadow: '0 -15px 80px rgba(234, 179, 8, 0.4), inset 0 0 40px rgba(234, 179, 8, 0.1)',
+                                borderColor: 'rgba(234, 179, 8, 0.8)' // 亮金色边框
+                            }
+                        }
+                    },
+                    animation: {
+                        shimmer: 'shimmer 3s infinite',
+                        'intense-shimmer': 'intense-shimmer 1s infinite linear',
+                        'fire-pulse': 'fire-pulse 1.5s ease-in-out infinite',
+                        'gold-flash': 'gold-flash 2s ease-in-out infinite', // 2秒呼吸周期
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
         body {
             background: url('/static/images/background.webp') no-repeat center center fixed !important;
@@ -125,6 +192,11 @@
                     <span id="room-owner-name" class="game-info-value">-</span>
                 </div>
                 <div class="game-info-item">
+                    <button id="last-10-hands-btn" class="owner-only" style="display: none; background: rgba(212, 175, 55, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); border-radius: 4px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: background 0.3s;" onmouseover="this.style.background='rgba(212, 175, 55, 0.4)'" onmouseout="this.style.background='rgba(212, 175, 55, 0.2)'">
+                        最后10把
+                    </button>
+                </div>
+                <div class="game-info-item">
                     <button onclick="backToNavigator()" style="background: rgba(185, 28, 28, 0.6); color: #fecaca; border: 1px solid #ef4444; border-radius: 4px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: background 0.3s;" onmouseover="this.style.background='rgba(153, 27, 27, 0.8)'" onmouseout="this.style.background='rgba(185, 28, 28, 0.6)'">
                         离开
                     </button>
@@ -179,31 +251,81 @@
         <div class="bottom-ui-container">
             <div id="my-hand-display" class="my-hand-display"></div>
 
-            <!-- 操作栏 -->
-            <div class="action-bar" id="bet-controls" style="display: none;">
-                <div id="fold-cmd-wrapper">
-                    <button class="action-btn btn-fold" id="fold-cmd" value="Fold">弃牌</button>
-                </div>
-                <div id="bet-input-wrapper" class="slider-area">
-                    <div class="slider-row">
-                        <button class="quick-bet-btn" id="decrease-bet-quick">-50</button>
-                        <button class="quick-bet-btn" id="decrease-bet">-10</button>
-                        <input type="text" id="bet-input" class="raise-amount" value="0">
-                        <button class="quick-bet-btn" id="increase-bet">+10</button>
-                        <button class="quick-bet-btn" id="increase-bet-quick">+50</button>
+            <!-- 操作栏 (New Design) -->
+            <div id="bet-controls" class="relative z-10" style="display: none; width: 70cqmin; margin-bottom: 2.25cqmin;">
+                <!-- 顶部金色装饰线 -->
+                <div class="h-[0.08cqmin] w-full bg-gradient-to-r from-transparent via-yellow-600 to-transparent opacity-70 mb-[0.08cqmin]"></div>
+
+                <div id="betting-control-panel" class="bg-neutral-950 rounded-t-[1.1cqmin] md:rounded-[1.1cqmin] shadow-[0_-0.6cqmin_1.9cqmin_rgba(0,0,0,0.9)] border-t border-yellow-900/20 border-x border-x-white/5 transition-all duration-500" style="height: 10.7cqmin; padding: 0.6cqmin; display: flex; flex-direction: column; justify-content: space-between;">
+
+                    <!-- 快捷按钮组 -->
+                    <div class="flex gap-[0.75cqmin] w-full" style="height: 4cqmin;">
+
+                        <!-- 1. 微调按钮 -->
+                        <div class="flex items-end justify-between gap-[0.15cqmin] flex-[2]" id="adjust-buttons-container">
+                            <button id="decrease-bet-quick" class="adjust-btn relative rounded-[0.3cqmin] border transition-all duration-200 active:scale-95 flex items-center justify-center font-cinzel h-full px-[0.375cqmin] flex-grow-[2] font-black tracking-tighter bg-neutral-900 border-red-900/30 text-red-700 hover:border-red-700 hover:text-red-500 shadow-[inset_0_0_0.375cqmin_rgba(0,0,0,0.5)]" style="font-size: 2.2cqmin;">-50</button>
+                            <button id="decrease-bet" class="adjust-btn relative rounded-[0.3cqmin] border transition-all duration-200 active:scale-95 flex items-center justify-center font-cinzel h-full px-[0.3cqmin] flex-grow-[1.5] font-bold bg-neutral-900 border-red-900/30 text-red-700 hover:border-red-700 hover:text-red-500 shadow-[inset_0_0_0.375cqmin_rgba(0,0,0,0.5)]" style="font-size: 2.0cqmin;">-10</button>
+                            <button id="decrease-bet-small" class="adjust-btn relative rounded-[0.3cqmin] border transition-all duration-200 active:scale-95 flex items-center justify-center font-cinzel h-full px-[0.225cqmin] flex-grow-[1] font-medium bg-neutral-900 border-red-900/30 text-red-700 hover:border-red-700 hover:text-red-500 shadow-[inset_0_0_0.375cqmin_rgba(0,0,0,0.5)]" style="font-size: 1.8cqmin;">-5</button>
+
+                            <div class="w-[1px] h-[80%] bg-white/5 mx-[0.15cqmin] self-center"></div>
+
+                            <button id="increase-bet-small" class="adjust-btn relative rounded-[0.3cqmin] border transition-all duration-200 active:scale-95 flex items-center justify-center font-cinzel h-full px-[0.225cqmin] flex-grow-[1] font-medium bg-neutral-900 border-yellow-700/30 text-yellow-600 hover:border-yellow-500 hover:text-yellow-400 hover:shadow-[0_0_0.375cqmin_rgba(234,179,8,0.1)] shadow-[inset_0_0_0.375cqmin_rgba(0,0,0,0.5)]" style="font-size: 1.8cqmin;">+5</button>
+                            <button id="increase-bet" class="adjust-btn relative rounded-[0.3cqmin] border transition-all duration-200 active:scale-95 flex items-center justify-center font-cinzel h-full px-[0.3cqmin] flex-grow-[1.5] font-bold bg-neutral-900 border-yellow-700/30 text-yellow-600 hover:border-yellow-500 hover:text-yellow-400 hover:shadow-[0_0_0.375cqmin_rgba(234,179,8,0.1)] shadow-[inset_0_0_0.375cqmin_rgba(0,0,0,0.5)]" style="font-size: 2.0cqmin;">+10</button>
+                            <button id="increase-bet-quick" class="adjust-btn relative rounded-[0.3cqmin] border transition-all duration-200 active:scale-95 flex items-center justify-center font-cinzel h-full px-[0.375cqmin] flex-grow-[2] font-black tracking-tighter bg-neutral-900 border-yellow-700/30 text-yellow-600 hover:border-yellow-500 hover:text-yellow-400 hover:shadow-[0_0_0.375cqmin_rgba(234,179,8,0.1)] shadow-[inset_0_0_0.375cqmin_rgba(0,0,0,0.5)]" style="font-size: 2.2cqmin;">+50</button>
+                        </div>
+
+                        <!-- 2. 底池比例按钮 -->
+                        <div class="flex justify-between gap-[0.375cqmin] h-full items-end flex-1">
+                            <button id="half-pot-bet" class="flex-1 h-full bg-gradient-to-b from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-800 border border-yellow-700/20 hover:border-yellow-500/50 text-yellow-100/80 rounded-[0.3cqmin] font-cinzel font-bold tracking-wider transition-all shadow-inner active:shadow-none flex items-center justify-center py-0" style="font-size: 1.5cqmin;">
+                                <span class="drop-shadow-sm">1/2 POT</span>
+                            </button>
+                            <button id="full-pot-bet" class="flex-1 h-full bg-gradient-to-b from-neutral-800 to-neutral-900 hover:from-neutral-700 hover:to-neutral-800 border border-yellow-700/20 hover:border-yellow-500/50 text-yellow-100/80 rounded-[0.3cqmin] font-cinzel font-bold tracking-wider transition-all shadow-inner active:shadow-none flex items-center justify-center py-0" style="font-size: 1.4cqmin;">
+                                <span class="drop-shadow-sm">MAX POT</span>
+                            </button>
+                            <button id="allin-bet" class="flex-1 h-full bg-gradient-to-b from-neutral-900 to-black hover:from-red-900 hover:to-red-950 border border-red-900/30 text-red-700/80 rounded-[0.3cqmin] font-black font-cinzel tracking-wider transition-all uppercase hover:text-yellow-100 hover:border-orange-500 hover:shadow-[0_0_0.6cqmin_rgba(234,88,12,0.5)] shadow-[inset_0_0_0.6cqmin_rgba(0,0,0,0.8)] flex items-center justify-center py-0" style="font-size: 1.7cqmin;">
+                                ALL IN
+                            </button>
+                        </div>
                     </div>
-                    <div class="quick-bets">
-                        <button class="quick-bet-btn" id="half-pot-bet">1/2 Pot</button>
-                        <button class="quick-bet-btn" id="full-pot-bet">Pot</button>
-                        <button class="quick-bet-btn" id="allin-bet">All In</button>
+
+                    <!-- 核心操作区域 -->
+                    <div class="flex items-end gap-[0.75cqmin] px-0" style="height: 5cqmin;">
+
+                        <!-- Fold Button -->
+                        <button
+                            id="fold-cmd"
+                            class="h-full w-1/3 md:w-1/4 bg-neutral-900 hover:bg-gradient-to-b hover:from-red-600 hover:via-red-700 hover:to-red-950 border border-neutral-800 hover:border-red-500 hover:shadow-[0_0_0.75cqmin_rgba(220,38,38,0.4)] rounded-[0.45cqmin] flex items-center justify-center gap-[0.375cqmin] group transition-all duration-300 shadow-lg"
+                        >
+                            <i data-lucide="x" class="text-neutral-600 group-hover:text-white transition-colors drop-shadow-md" style="width: 1.5cqmin; height: 1.5cqmin;"></i>
+                            <span class="font-cinzel text-neutral-500 group-hover:text-white font-bold tracking-wider transition-colors drop-shadow-md" style="font-size: 1.8cqmin;">FOLD</span>
+                        </button>
+
+                        <!-- Main Action Button -->
+                        <button
+                            id="bet-cmd"
+                            class="h-full flex-1 rounded-[0.45cqmin] flex items-center justify-center transition-all active:scale-[0.99] duration-200 relative overflow-hidden shadow-xl border-t border-white/20"
+                        >
+                            <!-- 扫光动画层 -->
+                            <div id="shimmer-layer" class="absolute top-0 left-[-100%] w-[50%] h-full skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+
+                            <!-- 内容层 -->
+                            <div class="flex items-center justify-center gap-[0.75cqmin] w-full relative z-10">
+                                <!-- 图标 -->
+                                <div id="action-icon-container" style="width: 1.8cqmin; height: 1.8cqmin; display: flex; align-items: center; justify-content: center;"></div>
+
+                                <div class="flex items-baseline gap-[0.375cqmin]">
+                                    <span id="action-text" class="font-cinzel font-black tracking-tighter drop-shadow-sm" style="font-size: 2.2cqmin;">CALL</span>
+                                    <span id="action-amount" class="font-mono font-bold opacity-90 text-white" style="font-size: 2.2cqmin;">
+                                        $50
+                                    </span>
+                                </div>
+                            </div>
+                        </button>
+
                     </div>
                 </div>
-                <div id="bet-cmd-wrapper">
-                    <button class="action-btn btn-raise" id="bet-cmd" value="Bet">下注</button>
-                </div>
-                <div id="no-bet-cmd-wrapper" style="display: none;">
-                    <button class="action-btn btn-check" id="no-bet-cmd">等待</button>
-                </div>
+                <!-- Hidden input for compatibility -->
+                <input type="hidden" id="bet-input" value="0">
             </div>
 
             <!-- 玩家控制区 -->
@@ -211,10 +333,10 @@
                 <div id="current-player" data-player-id="{{ player_id }}" data-allowed-to-bet="true">
                     <div class="cards"></div>
                 </div>
-                <div class="control-buttons">
-                    <span id="status-indicator" class="status-indicator"></span>
-                    <input type="button" id="ready-btn" class="control-btn" value="Ready">
-                    <input type="button" id="last-10-hands-btn" class="control-btn owner-only" value="最后10把" style="display: none;">
+                <div class="flex items-center gap-[1.4cqmin]">
+                    <button id="ready-btn" class="h-[5cqmin] w-[15cqmin] rounded-[0.45cqmin] flex items-center justify-center transition-all active:scale-[0.99] duration-200 relative overflow-hidden shadow-xl border-t border-white/20 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white font-cinzel font-bold tracking-wider text-[1.8cqmin] mb-[6cqmin] mr-[5cqmin]">
+                        READY
+                    </button>
                     <span id="hand-countdown-display" class="countdown-display" style="display: none;"></span>
                 </div>
             </div>

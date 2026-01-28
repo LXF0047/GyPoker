@@ -56,32 +56,112 @@ const PyPoker = {
         minBet: 0,
         maxBet: 0,
 
+        // This function is the core of the UI update
         updateBetDisplay: function() {
             const betInput = document.getElementById('bet-input');
-            const betBtn = document.getElementById('bet-cmd');
-            betInput.value = PyPoker.Player.currentBet;
+            if (betInput) betInput.value = PyPoker.Player.currentBet;
 
-            document.getElementById('decrease-bet').disabled = PyPoker.Player.currentBet <= PyPoker.Player.minBet;
-            document.getElementById('decrease-bet-quick').disabled = PyPoker.Player.currentBet <= PyPoker.Player.minBet;
-            document.getElementById('increase-bet').disabled = PyPoker.Player.currentBet >= PyPoker.Player.maxBet;
-            document.getElementById('increase-bet-quick').disabled = PyPoker.Player.currentBet >= PyPoker.Player.maxBet;
+            // --- New UI Update Logic ---
+            if (typeof lucide === 'undefined') return;
+            lucide.createIcons(); // Re-render icons if needed
 
-            // Remove state classes first, including the default 'btn-raise' from HTML
-            betBtn.classList.remove('btn-raise', 'btn-call-state', 'btn-allin-state', 'btn-bet-state', 'btn-check');
+            const state = this.getActionButtonState();
+            const btn = document.getElementById('bet-cmd'); // This is our main action button
+            const iconContainer = document.getElementById('action-icon-container');
+            const textSpan = document.getElementById('action-text');
+            const amountSpan = document.getElementById('action-amount');
+            const shimmer = document.getElementById('shimmer-layer');
+            const controlPanel = document.getElementById('betting-control-panel');
 
-            if (PyPoker.Player.currentBet === 0) {
-                betBtn.textContent = '过牌';
-                betBtn.classList.add('btn-check');
-            } else if (PyPoker.Player.currentBet === PyPoker.Player.minBet && PyPoker.Player.minBet > 0) {
-                betBtn.textContent = '跟注 $' + PyPoker.Player.currentBet;
-                betBtn.classList.add('btn-call-state');
-            } else if (PyPoker.Player.currentBet === PyPoker.Player.maxBet) {
-                betBtn.textContent = 'All In';
-                betBtn.classList.add('btn-allin-state');
-            } else {
-                betBtn.textContent = '下注 $' + PyPoker.Player.currentBet;
-                betBtn.classList.add('btn-bet-state');
+            if (!btn || !iconContainer || !textSpan || !amountSpan || !shimmer || !controlPanel) {
+                // console.error("One or more UI elements for betting not found!");
+                return;
             }
+
+            // Reset base classes
+            // Updated rounded class to match new UI scaling (rounded-[0.45cqmin])
+            btn.className = `h-full flex-1 rounded-[0.45cqmin] flex items-center justify-center transition-all active:scale-[0.99] duration-200 relative shadow-xl border-t border-white/20 ${state.color}`;
+
+            // All-in effects
+            if (state.isAllIn) {
+                btn.classList.add('overflow-visible', 'z-20');
+                shimmer.className = "absolute top-0 left-[-100%] w-[50%] h-full skew-x-[-20deg] bg-gradient-to-r from-transparent via-yellow-400/50 to-transparent animate-intense-shimmer";
+                controlPanel.classList.add('animate-gold-flash');
+                controlPanel.classList.remove('bg-neutral-950');
+                controlPanel.classList.add('bg-neutral-950/95');
+            } else {
+                btn.classList.add('overflow-hidden');
+                shimmer.className = "absolute top-0 left-[-100%] w-[50%] h-full skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer";
+                controlPanel.classList.remove('animate-gold-flash');
+                controlPanel.classList.add('bg-neutral-950');
+            }
+
+            // Update text
+            textSpan.innerText = state.text;
+            // Removed text-3xl to allow style="font-size:..." to control size
+            textSpan.className = `font-cinzel font-black tracking-tighter drop-shadow-sm ${state.isAllIn ? 'drop-shadow-[0_0_8px_rgba(234,179,8,0.8)]' : ''}`;
+
+            // Update amount
+            if (state.text === 'CHECK' || state.text === 'Err') {
+                amountSpan.style.display = 'none';
+            } else {
+                amountSpan.style.display = 'inline';
+                amountSpan.innerText = '$' + PyPoker.Player.currentBet;
+                let textColorClass = 'text-white';
+                if (state.text === 'RAISE') textColorClass = 'text-neutral-900';
+                if (state.isAllIn) textColorClass = 'text-yellow-100 drop-shadow-[0_0_5px_rgba(234,88,12,0.8)]';
+                // Removed text-2xl to allow style="font-size:..." to control size
+                amountSpan.className = `font-mono font-bold opacity-90 ${textColorClass}`;
+            }
+
+            // Update icon
+            // Changed width/height to 100% to fit container
+            let iconSvg = '';
+            if (state.text === 'CHECK' || state.text === 'CALL') {
+                iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${state.iconColor}"><path d="M20 6 9 17l-5-5"/></svg>`;
+            } else {
+                iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${state.iconColor}"><path d="m18 15-6-6-6 6"/></svg>`;
+            }
+            iconContainer.innerHTML = iconSvg;
+        },
+
+        getActionButtonState: function() {
+            const { currentBet, minBet, maxBet } = PyPoker.Player;
+
+            if (currentBet === maxBet && maxBet > 0) { // Make sure maxBet is not 0
+                return {
+                    text: "ALL IN",
+                    color: "bg-gradient-to-b from-red-600 via-orange-700 to-red-950 text-yellow-100 animate-fire-pulse",
+                    iconColor: "text-yellow-400 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]",
+                    isAllIn: true
+                };
+            }
+            if (minBet === 0 && currentBet === 0) {
+                return {
+                    text: "CHECK",
+                    color: "bg-gradient-to-b from-emerald-800 to-emerald-950 border-emerald-500/30 text-emerald-100 shadow-emerald-900/30",
+                    iconColor: "text-emerald-400",
+                    isAllIn: false
+                };
+            }
+            if (currentBet === minBet && minBet > 0) {
+                return {
+                    text: "CALL",
+                    color: "bg-gradient-to-b from-slate-700 to-slate-900 border-slate-500/30 text-slate-100 shadow-black/50",
+                    iconColor: "text-slate-300",
+                    isAllIn: false
+                };
+            }
+            if (currentBet > minBet) {
+                return {
+                    text: "RAISE",
+                    color: "bg-gradient-to-b from-yellow-400 via-yellow-500 to-yellow-600 border-yellow-300 text-black shadow-yellow-500/20",
+                    iconColor: "text-black",
+                    isAllIn: false
+                };
+            }
+            // Fallback/Error state
+            return { text: "Err", color: "bg-gray-500", isAllIn: false, iconColor: "text-white" };
         },
 
         enableBetMode: function(message) {
@@ -90,41 +170,83 @@ const PyPoker = {
             PyPoker.Player.maxBet = parseInt(message.max_bet);
             PyPoker.Player.currentBet = PyPoker.Player.minBet;
 
-            document.getElementById('allin-bet').dataset.value = PyPoker.Player.maxBet;
-
-            // 设置弃牌/Pass按钮
+            // Set fold button text
             const foldBtn = document.getElementById('fold-cmd');
-            if (message.min_score) {
-                foldBtn.textContent = 'Pass';
-                foldBtn.classList.remove('btn-fold');
-                foldBtn.classList.add('btn-check');
-            } else {
-                foldBtn.textContent = '弃牌';
-                foldBtn.classList.add('btn-fold');
-                foldBtn.classList.remove('btn-check');
+            if (foldBtn) {
+                const foldText = foldBtn.querySelector('span');
+                if (foldText) {
+                    foldText.textContent = message.min_score ? 'PASS' : 'FOLD';
+                }
             }
 
             PyPoker.Player.updateBetDisplay();
-            document.getElementById('bet-controls').style.display = 'flex';
+            const controls = document.getElementById('bet-controls');
+            if (controls) {
+                controls.style.display = 'block';
+            }
         },
 
         disableBetMode: function() {
             PyPoker.Player.betMode = false;
-            document.getElementById('bet-controls').style.display = 'none';
+            const controls = document.getElementById('bet-controls');
+            if (controls) {
+                controls.style.display = 'none';
+            }
+        },
+
+        adjustWager: function(amount) {
+            if (!PyPoker.Player.betMode) return;
+            let newVal = PyPoker.Player.currentBet + amount;
+            const { minBet, maxBet } = PyPoker.Player;
+
+            if (newVal > maxBet) newVal = maxBet;
+            if (newVal < minBet) newVal = minBet;
+
+            PyPoker.Player.currentBet = newVal;
+            PyPoker.Player.updateBetDisplay();
+        },
+
+        setPotPercentage: function(type) {
+            if (!PyPoker.Player.betMode) return;
+            let amount = 0;
+            const potText = document.getElementById('pot-amount').textContent;
+            const potAmount = parseInt(potText.replace(/[$,]/g, '')) || 0;
+            const { minBet, maxBet } = PyPoker.Player;
+
+            switch (type) {
+                case 'half':
+                    amount = minBet + (potAmount / 2);
+                    break;
+                case 'full':
+                    amount = minBet + potAmount;
+                    break;
+                case 'allin':
+                    amount = maxBet;
+                    break;
+            }
+
+            // Clamp the value
+            if (amount > maxBet) amount = maxBet;
+            if (amount < minBet) amount = minBet;
+
+            PyPoker.Player.currentBet = Math.floor(amount);
+            PyPoker.Player.updateBetDisplay();
         },
 
         toggleReadyStatus: function() {
             const readyBtn = document.getElementById('ready-btn');
-            const statusIndicator = document.getElementById('status-indicator');
+            // const statusIndicator = document.getElementById('status-indicator'); // Removed
 
-            if (readyBtn.value === 'Ready') {
-                readyBtn.value = 'Cancel';
-                statusIndicator.classList.add('ready');
-                readyBtn.classList.add('cancel-state');
+            if (readyBtn.textContent.trim() === 'READY') {
+                readyBtn.textContent = 'CANCEL';
+                // if(statusIndicator) statusIndicator.classList.add('ready'); // Removed
+                readyBtn.classList.remove('bg-gradient-to-b', 'from-emerald-500', 'to-emerald-700', 'text-white');
+                readyBtn.classList.add('bg-neutral-700', 'text-neutral-400', 'border-neutral-600');
             } else {
-                readyBtn.value = 'Ready';
-                statusIndicator.classList.remove('ready');
-                readyBtn.classList.remove('cancel-state');
+                readyBtn.textContent = 'READY';
+                // if(statusIndicator) statusIndicator.classList.remove('ready'); // Removed
+                readyBtn.classList.remove('bg-neutral-700', 'text-neutral-400', 'border-neutral-600');
+                readyBtn.classList.add('bg-gradient-to-b', 'from-emerald-500', 'to-emerald-700', 'text-white');
             }
         }
     },
@@ -618,9 +740,15 @@ const PyPoker = {
         
         // 游戏结束
         gameOver: function() {
-            document.getElementById('ready-btn').value = 'Ready';
-            document.getElementById('status-indicator').classList.remove('ready');
-            document.getElementById('ready-btn').classList.remove('cancel-state'); // Reset cancel state
+            document.getElementById('ready-btn').textContent = 'READY';
+            // document.getElementById('status-indicator').classList.remove('ready'); // Removed
+            // document.getElementById('ready-btn').classList.remove('cancel-state'); // Removed
+            
+            // Reset style to green
+            const readyBtn = document.getElementById('ready-btn');
+            readyBtn.classList.remove('bg-neutral-700', 'text-neutral-400', 'border-neutral-600');
+            readyBtn.classList.add('bg-gradient-to-b', 'from-emerald-500', 'to-emerald-700', 'text-white');
+
             // 显示玩家控制区
             document.getElementById('player-controls').style.display = 'flex';
             PyPoker.Player.disableBetMode();
@@ -1045,7 +1173,7 @@ const PyPoker = {
             switch (data.message_type) {
                 case 'ping':
                     const readyBtn = document.getElementById('ready-btn');
-                    const isReady = readyBtn.value === 'Cancel';
+                    const isReady = readyBtn.textContent === 'CANCEL';
                     let pongMsg = {
                         'message_type': 'pong',
                         'ready': isReady
@@ -1096,7 +1224,7 @@ const PyPoker = {
                 case 'final-hands-finished':
                     alert('10局游戏已结束。');
                     document.getElementById('hand-countdown-display').style.display = 'none';
-                    document.getElementById('last-10-hands-btn').value = '最后10把';
+                    document.getElementById('last-10-hands-btn').textContent = '最后10把';
                     document.getElementById('last-10-hands-btn').disabled = false;
                     document.getElementById('last-10-hands-btn').style.display = 'inline-block';
                     break;
@@ -1120,97 +1248,45 @@ const PyPoker = {
         // 最后10把按钮
         document.getElementById('last-10-hands-btn').addEventListener('click', function() {
             PyPoker.wantsToStartFinalHands = true;
-            this.value = '下把开始最后10把';
+            this.textContent = '下把开始最后10把';
             this.disabled = true;
         });
 
-        // 弃牌按钮
+        // --- New Betting Controls Event Listeners ---
+
+        // Fold Button
         document.getElementById('fold-cmd').addEventListener('click', function() {
             PyPoker.socket.emit('game_message', {
                 'message_type': 'bet',
                 'bet': -1
             });
             PyPoker.Player.disableBetMode();
-            PyPoker.Game.stopCountdown(); // 停止倒计时
+            PyPoker.Game.stopCountdown();
         });
 
-        // 下注按钮
+        // Main Action Button (Call/Raise/Check/All-in)
         document.getElementById('bet-cmd').addEventListener('click', function() {
             PyPoker.socket.emit('game_message', {
                 'message_type': 'bet',
                 'bet': PyPoker.Player.currentBet
             });
             PyPoker.Player.disableBetMode();
-            PyPoker.Game.stopCountdown(); // 停止倒计时
+            PyPoker.Game.stopCountdown();
         });
 
-        // 等待按钮
-        document.getElementById('no-bet-cmd').addEventListener('click', function() {
-            PyPoker.socket.emit('game_message', {
-                'message_type': 'bet',
-                'bet': 0
-            });
-            PyPoker.Player.disableBetMode();
-            PyPoker.Game.stopCountdown(); // 停止倒计时
-        });
+        // Bet adjustment buttons
+        document.getElementById('decrease-bet-quick').addEventListener('click', () => PyPoker.Player.adjustWager(-50));
+        document.getElementById('decrease-bet').addEventListener('click', () => PyPoker.Player.adjustWager(-10));
+        document.getElementById('decrease-bet-small')?.addEventListener('click', () => PyPoker.Player.adjustWager(-5));
+        document.getElementById('increase-bet-small')?.addEventListener('click', () => PyPoker.Player.adjustWager(5));
+        document.getElementById('increase-bet').addEventListener('click', () => PyPoker.Player.adjustWager(10));
+        document.getElementById('increase-bet-quick').addEventListener('click', () => PyPoker.Player.adjustWager(50));
 
-        // 减少下注
-        document.getElementById('decrease-bet').addEventListener('click', function() {
-            if (PyPoker.Player.currentBet > PyPoker.Player.minBet) {
-                PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, PyPoker.Player.currentBet - 10);
-                PyPoker.Player.updateBetDisplay();
-            }
-        });
-
-        document.getElementById('decrease-bet-quick').addEventListener('click', function() {
-            if (PyPoker.Player.currentBet > PyPoker.Player.minBet) {
-                PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, PyPoker.Player.currentBet - 50);
-                PyPoker.Player.updateBetDisplay();
-            }
-        });
-
-        // 增加下注
-        document.getElementById('increase-bet').addEventListener('click', function() {
-            if (PyPoker.Player.currentBet < PyPoker.Player.maxBet) {
-                PyPoker.Player.currentBet = Math.min(PyPoker.Player.maxBet, PyPoker.Player.currentBet + 10);
-                PyPoker.Player.updateBetDisplay();
-            }
-        });
-
-        document.getElementById('increase-bet-quick').addEventListener('click', function() {
-            if (PyPoker.Player.currentBet < PyPoker.Player.maxBet) {
-                PyPoker.Player.currentBet = Math.min(PyPoker.Player.maxBet, PyPoker.Player.currentBet + 50);
-                PyPoker.Player.updateBetDisplay();
-            }
-        });
-
-        // 半池
-        document.getElementById('half-pot-bet').addEventListener('click', function() {
-            const potText = document.getElementById('pot-amount').textContent;
-            const potAmount = parseInt(potText.replace('$', '').replace(',', '')) || 0;
-            const halfPot = Math.round(potAmount / 2);
-            PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, Math.min(PyPoker.Player.maxBet, halfPot));
-            PyPoker.Player.updateBetDisplay();
-        });
-
-        // 全池
-        document.getElementById('full-pot-bet').addEventListener('click', function() {
-            const potText = document.getElementById('pot-amount').textContent;
-            const potAmount = parseInt(potText.replace('$', '').replace(',', '')) || 0;
-            PyPoker.Player.currentBet = Math.max(PyPoker.Player.minBet, Math.min(PyPoker.Player.maxBet, potAmount));
-            PyPoker.Player.updateBetDisplay();
-        });
-
-        // All-in
-        document.getElementById('allin-bet').addEventListener('click', function() {
-            if (confirm('您确定要全下 (All-In) 吗？')) {
-                PyPoker.socket.emit('game_message', {
-                    'message_type': 'bet',
-                    'bet': PyPoker.Player.maxBet
-                });
-                PyPoker.Player.disableBetMode();
-                PyPoker.Game.stopCountdown(); // 停止倒计时
-            }
+        // Pot percentage buttons
+        document.getElementById('half-pot-bet').addEventListener('click', () => PyPoker.Player.setPotPercentage('half'));
+        document.getElementById('full-pot-bet').addEventListener('click', () => PyPoker.Player.setPotPercentage('full'));
+        document.getElementById('allin-bet').addEventListener('click', () => {
+            PyPoker.Player.setPotPercentage('allin');
         });
 
         PyPoker.Player.disableBetMode();
