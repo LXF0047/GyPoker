@@ -133,6 +133,14 @@
             /* 核心逻辑：宽度取 "100%" 和 "最大高度对应的宽度" 的较小值 */
             width: min(100%, calc(60vh * (2816 / 1536)));
         }
+
+        /* 移动端优化：防止按钮双击缩放和文本选择 */
+        #betting-control-panel button, #ready-btn, .interaction-btn {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
     </style>
 </head>
 <body>
@@ -366,4 +374,3 @@
         }
     </script>
 </body>
-</html>
