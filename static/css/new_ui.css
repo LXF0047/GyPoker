@@ -827,7 +827,7 @@ body {
     margin-top: 0.8cqmin;
     z-index: 30;
     text-align: center;
-    min-width: 10cqmin; /* 缩小最小宽度 */
+    min-width: 8cqmin; /* 增大最小宽度 */
     border: 0.15cqmin solid rgba(255,255,255,0.1);
     box-shadow: 0 0.7cqmin 2cqmin rgba(0,0,0,0.4);
 }
@@ -835,20 +835,20 @@ body {
 .player-name {
     font-family: 'Playfair Display', serif;
     font-weight: 600;
-    font-size: 0.9cqmin; /* 缩小字体 */
+    font-size: 1.1cqmin; /* 增大字体 */
     color: #f0f0f0;
     text-shadow: 0 0.15cqmin 0.4cqmin rgba(0,0,0,0.5);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 9cqmin; /* 缩小最大宽度 */
+    max-width: 11cqmin; /* 增大最大宽度 */
 }
 
 .player-balance {
     font-family: 'Roboto Mono', monospace;
     color: var(--accent-gold);
-    font-weight: 500;
-    font-size: 1cqmin; /* 缩小字体 */
+    font-weight: 800;
+    font-size: 1.6cqmin; /* 增大字体 */
     text-shadow: 0 0 1.1cqmin rgba(212,175,55,0.3);
 }
 
@@ -904,14 +904,13 @@ body {
 }
 
 .bet-amount {
-    background: rgba(0,0,0,0.8);
     color: white;
     font-family: 'Roboto Mono', monospace;
-    font-size: 1cqmin;
+    font-size: 1.8cqmin;
     font-weight: 500;
     padding: 0.4cqmin 1.4cqmin;
     border-radius: 1.4cqmin;
-    border: 0.15cqmin solid rgba(255,255,255,0.2);
+    border: none;
 }
 
 /* 当前玩家手牌隐藏 */
