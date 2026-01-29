@@ -1290,6 +1290,16 @@ const PyPoker = {
         });
 
         PyPoker.Player.disableBetMode();
+
+        // 移动端默认收起侧边栏
+        if (window.innerWidth <= 768) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (sidebar && overlay) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+            }
+        }
     }
 };
 

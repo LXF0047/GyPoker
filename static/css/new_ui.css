@@ -32,7 +32,8 @@ body {
     background: radial-gradient(ellipse at 50% 0%, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
     radial-gradient(circle at center, #121212 0%, #000000 100%);
     color: var(--text-bright);
-    height: 100vh;
+    height: 100vh; /* 兼容旧浏览器 */
+    height: 100dvh; /* 针对现代移动端浏览器 */
     overflow: hidden;
     display: flex;
 }
@@ -210,8 +211,9 @@ body {
 
 .interaction-btn {
     flex: 1 1 calc(33.333% - 8px);
-    min-width: 90px;
-    min-height: 34px;
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: manipulation; /* 优化点击延迟 */
     padding: 8px 4px;
     background: rgba(212, 175, 55, 0.1);
     border: 1px solid rgba(212, 175, 55, 0.3);
@@ -546,7 +548,7 @@ body {
 
 .pot-label {
     color: var(--text-dim);
-    font-size: 1cqmin;
+    font-size: max(9px, 1cqmin);
     text-transform: uppercase;
     letter-spacing: 0.3cqmin;
     text-align: center;
@@ -556,7 +558,7 @@ body {
 .pot-amount {
     color: var(--accent-gold);
     font-family: 'Roboto Mono', monospace;
-    font-size: 2cqmin;
+    font-size: max(14px, 2cqmin);
     font-weight: 600;
     text-shadow: 0 0 1.5cqmin rgba(212, 175, 55, 0.3);
 }
@@ -572,8 +574,8 @@ body {
 
 /* === 扑克牌样式 === */
 .card {
-    width: 9cqmin;
-    height: 12.6cqmin;
+    width: max(40px, 9cqmin);
+    height: max(56px, 12.6cqmin);
     background: linear-gradient(145deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%);
     border-radius: 1cqmin;
     position: relative;
@@ -614,12 +616,12 @@ body {
 
 .card-value {
     font-family: 'Playfair Display', serif;
-    font-size: 1.4cqmin;
+    font-size: max(10px, 1.4cqmin);
     font-weight: 700;
 }
 
 .card-suit-small {
-    font-size: 1.1cqmin;
+    font-size: max(9px, 1.1cqmin);
     margin-top: -0.3cqmin;
 }
 
@@ -750,8 +752,8 @@ body {
 }
 
 .avatar {
-    width: 9.5cqmin;
-    height: 9.5cqmin;
+    width: max(30px, 9.5cqmin);
+    height: max(30px, 9.5cqmin);
     background: linear-gradient(145deg, #3a3a3a, #1a1a1a);
     border-radius: 50%;
     border: 0.5cqmin solid #444;
@@ -863,7 +865,7 @@ body {
 .player-name {
     font-family: 'Playfair Display', serif;
     font-weight: 600;
-    font-size: 1.1cqmin; /* 增大字体 */
+    font-size: max(10px, 1.1cqmin); /* 增大字体 */
     color: #f0f0f0;
     text-shadow: 0 0.15cqmin 0.4cqmin rgba(0, 0, 0, 0.5);
     white-space: nowrap;
@@ -876,13 +878,13 @@ body {
     font-family: 'Roboto Mono', monospace;
     color: var(--accent-gold);
     font-weight: 800;
-    font-size: 1.6cqmin; /* 增大字体 */
+    font-size: max(12px, 1.6cqmin); /* 增大字体 */
     text-shadow: 0 0 1.1cqmin rgba(212, 175, 55, 0.3);
 }
 
 /* 玩家状态标签 */
 .player-status {
-    font-size: 1cqmin;
+    font-size: max(9px, 1cqmin);
     padding: 0.3cqmin 1.1cqmin;
     border-radius: 1.4cqmin;
     margin-top: 0.5cqmin;
@@ -938,7 +940,7 @@ body {
 .bet-amount {
     color: white;
     font-family: 'Roboto Mono', monospace;
-    font-size: 1.8cqmin;
+    font-size: max(12px, 1.8cqmin);
     font-weight: 500;
     padding: 0.4cqmin 1.4cqmin;
     border-radius: 1.4cqmin;
@@ -1089,6 +1091,7 @@ body {
     z-index: 200;
     width: 100%;
     pointer-events: none;
+    padding-bottom: env(safe-area-inset-bottom, 20px); 
 }
 
 .bottom-ui-container > * {
@@ -1129,16 +1132,17 @@ body {
 .mobile-toggle {
     display: none;
     position: absolute;
-    top: 2cqmin;
-    right: 2cqmin;
+    top: max(10px, env(safe-area-inset-top));
+    right: 15px;
     z-index: 300;
     background: rgba(0, 0, 0, 0.7);
     color: var(--accent-gold);
-    border: 0.15cqmin solid var(--accent-gold);
-    padding: 1.4cqmin 2cqmin;
-    border-radius: 1.1cqmin;
-    font-size: 1.8cqmin;
+    border: 1px solid var(--accent-gold);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 24px; /* 固定字体大小，不要用 cqmin */
     cursor: pointer;
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
 }
 
@@ -1151,6 +1155,7 @@ body {
     padding: 1.6cqmin 2.8cqmin;
     border-radius: 2cqmin;
     border: 0.15cqmin solid rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     z-index: 50;
 }
@@ -1158,7 +1163,7 @@ body {
 .game-info-row {
     display: flex;
     gap: 2.8cqmin;
-    font-size: 1.2cqmin;
+    font-size: max(10px, 1.2cqmin);
 }
 
 .game-info-item {
@@ -1185,7 +1190,7 @@ body {
     background: rgba(0, 0, 0, 0.6);
     padding: 1.4cqmin 2cqmin;
     border-radius: 1.4cqmin;
-    font-size: 1.1cqmin;
+    font-size: max(10px, 1.1cqmin);
     max-width: 35cqmin;
     z-index: 50;
 }
@@ -1234,6 +1239,16 @@ body {
     .table-wrapper {
         width: 98%;
         height: auto;
+    }
+}
+
+ @media (max-width: 768px) {
+    .poker-felt::before {
+        background-image: none; /* 移除 SVG 噪点 */
+        opacity: 1; /* 或使用简单的透明图片代替 */
+    }
+    .game-area::before {
+        animation: none; /* 禁用背景光效动画以省电 */
     }
 }
 
@@ -1289,9 +1304,12 @@ body {
     background: rgba(212, 175, 55, 0.1);
     color: var(--accent-gold);
     font-family: 'Playfair Display', serif;
-    font-size: 1.25cqmin;
+    font-size: max(12px, 1.25cqmin);
     cursor: pointer;
     transition: background 0.2s;
+    min-height: 44px; /* 确保手指能点到 */
+    min-width: 44px;
+    touch-action: manipulation; /* 优化点击延迟 */
 }
 
 .control-btn:hover {
