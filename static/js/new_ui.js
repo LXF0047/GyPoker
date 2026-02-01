@@ -1212,22 +1212,46 @@ const PyPoker = {
 
                 case 'final-hands-started':
                     document.getElementById('last-10-hands-btn').style.display = 'none';
-                    document.getElementById('hand-countdown-display').textContent = `最后 ${data.countdown} 把开始`;
-                    document.getElementById('hand-countdown-display').style.display = 'inline-block';
+                    // document.getElementById('hand-countdown-display').textContent = `最后 ${data.countdown} 把开始`;
+                    // document.getElementById('hand-countdown-display').style.display = 'inline-block';
                     PyPoker.Logger.log('最后 ' + data.countdown + ' 把游戏开始');
                     break;
 
-                case 'final-hands-update':
-                    document.getElementById('hand-countdown-display').textContent = `第 ${data.current_hand} / ${data.total_hands} 局`;
+                case 'final-hands-update': {
+                    // document.getElementById('hand-countdown-display').textContent = `第 ${data.current_hand} / ${data.total_hands} 局`;
+                    
+                    // 更新牌桌上的计数器
+                    const counter = document.getElementById('final-hands-counter');
+                    if (counter) {
+                        counter.textContent = data.current_hand;
+                        counter.style.display = 'flex';
+                        
+                        // 最后一局添加火焰特效
+                        if (data.current_hand === data.total_hands) {
+                            counter.classList.add('final-round');
+                        } else {
+                            counter.classList.remove('final-round');
+                        }
+                    }
                     break;
+                }
 
-                case 'final-hands-finished':
-                    alert('10局游戏已结束。');
-                    document.getElementById('hand-countdown-display').style.display = 'none';
+                case 'final-hands-finished': {
+                    // 移除弹窗提醒
+                    // alert('10局游戏已结束。');
+                    // document.getElementById('hand-countdown-display').style.display = 'none';
                     document.getElementById('last-10-hands-btn').textContent = '最后10把';
                     document.getElementById('last-10-hands-btn').disabled = false;
                     document.getElementById('last-10-hands-btn').style.display = 'inline-block';
+                    
+                    // 隐藏牌桌上的计数器
+                    const counter = document.getElementById('final-hands-counter');
+                    if (counter) {
+                        counter.style.display = 'none';
+                        counter.classList.remove('final-round');
+                    }
                     break;
+                }
             }
         });
 

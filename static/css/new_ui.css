@@ -828,6 +828,46 @@ body {
     }
 }
 
+/* 最后10把计数器 */
+.final-hands-counter {
+    position: absolute;
+    top: 15%; /* 与荷官倒计时高度一致 */
+    right: 65%; /* 与荷官倒计时对称 */
+    width: 6cqmin;
+    height: 6cqmin;
+    background: rgba(0, 0, 0, 0.8);
+    border: 0.2cqmin solid var(--accent-gold);
+    border-radius: 50%;
+    color: #c41e3a; /* 红色数字 */
+    font-family: 'Roboto Mono', monospace;
+    font-size: 2.5cqmin;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 6;
+    box-shadow: 0 0 2cqmin rgba(212, 175, 55, 0.5);
+}
+
+/* 最后一局火焰特效 */
+.final-hands-counter.final-round {
+    border-color: #ff4500;
+    color: #ff4500;
+    box-shadow: 0 0 10px #ff4500, 0 0 20px #ff4500, inset 0 0 10px #ff4500;
+    animation: fire-burn 1s infinite alternate;
+}
+
+@keyframes fire-burn {
+    0% {
+        box-shadow: 0 0 10px #ff4500, 0 0 20px #ff4500, inset 0 0 10px #ff4500;
+        transform: scale(1);
+    }
+    100% {
+        box-shadow: 0 0 20px #ff8c00, 0 0 40px #ff8c00, inset 0 0 20px #ff8c00;
+        transform: scale(1.1);
+    }
+}
+
 /* 庄家按钮 */
 .dealer-btn {
     position: absolute;
@@ -1442,11 +1482,11 @@ body {
 }
 
 .profit-pos {
-    color: #2ecc71;
+    color: #e74c3c;
 }
 
 .profit-neg {
-    color: #e74c3c;
+    color: #2ecc71;
 }
 
 .profit-neutral {
