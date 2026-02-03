@@ -141,6 +141,24 @@
             user-select: none;
             -webkit-touch-callout: none;
         }
+
+        /* 空座位可点击提示 */
+        .seat.empty {
+            cursor: pointer;
+        }
+
+        .seat.empty::after {
+            content: '点击入座';
+            margin-top: 0.4cqmin;
+            font-size: 1.4cqmin;
+            color: rgba(212, 175, 55, 0.65);
+            text-shadow: 0 0 0.6cqmin rgba(0, 0, 0, 0.6);
+            pointer-events: none;
+        }
+
+        .seat.empty:hover::after {
+            color: rgba(212, 175, 55, 0.95);
+        }
     </style>
 </head>
 <body>

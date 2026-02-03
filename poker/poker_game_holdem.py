@@ -190,8 +190,9 @@ class HoldemPokerGame(PokerGame):
 
         # Record players
         for player in self._game_players.all:
-            seat = getattr(player, 'seat', 0)
-            if seat is None: 
+            seat = getattr(player, 'seat', None)
+            if seat is None:
+                self._logger.warning("Player %s has no seat; defaulting seat_no to 0", player.id)
                 seat = 0
 
             position = position_map.get(player.id, "UNK")

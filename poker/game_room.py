@@ -37,6 +37,17 @@ class GameRoomPlayers:
         """
         self._lock.acquire()
         try:
+            return [self._players[player_id] for player_id in self._player_join_order if player_id in self._players]
+        finally:
+            self._lock.release()
+
+    @property
+    def seated_players(self) -> List[PlayerServer]:
+        """
+        获取已入座的玩家列表（按座位顺序）。
+        """
+        self._lock.acquire()
+        try:
             return [self._players[player_id] for player_id in self._seats if player_id is not None]
         finally:
             self._lock.release()
@@ -79,14 +90,11 @@ class GameRoomPlayers:
             if player.id in self._players:
                 raise DuplicateRoomPlayerException
 
-            try:
-                free_seat = self._seats.index(None)
-            except ValueError:
+            if len(self._players) >= len(self._seats):
                 raise FullGameRoomException
-            else:
-                self._seats[free_seat] = player.id
-                self._players[player.id] = player
-                self._player_join_order.append(player.id)
+
+            self._players[player.id] = player
+            self._player_join_order.append(player.id)
         finally:
             self._lock.release()
 
@@ -98,13 +106,46 @@ class GameRoomPlayers:
         """
         self._lock.acquire()
         try:
-            seat = self._seats.index(player_id)
-        except ValueError:
-            raise UnknownRoomPlayerException
-        else:
-            self._seats[seat] = None
+            if player_id not in self._players:
+                raise UnknownRoomPlayerException
+
+            for idx, seat_player_id in enumerate(self._seats):
+                if seat_player_id == player_id:
+                    self._seats[idx] = None
+                    break
+
             del self._players[player_id]
-            self._player_join_order.remove(player_id)
+            if player_id in self._player_join_order:
+                self._player_join_order.remove(player_id)
+        finally:
+            self._lock.release()
+
+    def assign_seat(self, player_id: str, seat_index: int) -> bool:
+        """
+        为玩家分配座位。返回 True 表示分配成功或座位未变更。
+        """
+        self._lock.acquire()
+        try:
+            if player_id not in self._players:
+                raise UnknownRoomPlayerException
+
+            if seat_index < 0 or seat_index >= len(self._seats):
+                return False
+
+            current_seat = None
+            for idx, seat_player_id in enumerate(self._seats):
+                if seat_player_id == player_id:
+                    current_seat = idx
+                    break
+
+            if self._seats[seat_index] is not None and self._seats[seat_index] != player_id:
+                return False
+
+            if current_seat is not None and current_seat != seat_index:
+                self._seats[current_seat] = None
+
+            self._seats[seat_index] = player_id
+            return True
         finally:
             self._lock.release()
 
@@ -286,6 +327,35 @@ class GameRoom(GameSubscriber):
         finally:
             self._lock.release()
 
+    def _apply_pending_seat_requests(self):
+        if self.hand_in_progress:
+            return
+
+        seat_changed = False
+        seat_count = len(self._room_players.seats)
+
+        for player in self._room_players.players:
+            seat_request = player.get_pending_seat_request()
+            if seat_request is None:
+                continue
+
+            if seat_request < 0 or seat_request >= seat_count:
+                player.clear_pending_seat_request()
+                player.try_send_message({"message_type": "error", "error": "Invalid seat"})
+                continue
+
+            assigned = self._room_players.assign_seat(player.id, seat_request)
+            player.clear_pending_seat_request()
+
+            if assigned:
+                seat_changed = True
+                player._ready = False
+            else:
+                player.try_send_message({"message_type": "error", "error": "Seat occupied"})
+
+        if seat_changed:
+            self._room_event_handler.room_event("readiness-update", None, self.owner)
+
     def remove_inactive_players(self):
         """
         移除所有不活跃的玩家。
@@ -324,7 +394,10 @@ class GameRoom(GameSubscriber):
         """
         检查所有玩家是否都准备就绪。
         """
-        return all(player.ready for player in self._room_players.players)
+        seated_players = self._room_players.seated_players
+        if len(seated_players) < 2:
+            return False
+        return all(player.ready for player in seated_players)
 
     def activate(self):
         """
@@ -338,9 +411,10 @@ class GameRoom(GameSubscriber):
             while True:
                 try:
                     self.remove_inactive_players()
+                    self._apply_pending_seat_requests()
 
                     # Check for readiness changes
-                    current_readiness = {p.id: p.ready for p in self._room_players.players}
+                    current_readiness = {p.id: p.ready for p in self._room_players.seated_players}
                     if current_readiness != last_readiness:
                         self._room_event_handler.room_event("readiness-update", None, self.owner)
                         last_readiness = current_readiness
@@ -361,10 +435,11 @@ class GameRoom(GameSubscriber):
                         # 添加等待时间，避免频繁发送 ping 请求导致玩家被错误判定为掉线
                         gevent.sleep(2)
                         continue
-                    # 检查是否大于两个玩家
-                    players = self._room_players.players
+                    # 检查已入座玩家数量
+                    players = self._room_players.seated_players
                     if len(players) < 2:
-                        raise GameError("At least two players needed to start a new game")
+                        gevent.sleep(2)
+                        continue
                     
                     # Assign seats to players
                     current_seats = self._room_players.seats

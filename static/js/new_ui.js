@@ -11,6 +11,7 @@ const PyPoker = {
     ownerId: null,
     countdownInterval: null, // 倒计时定时器
     interactionCooldowns: {}, // 互动按钮冷却
+    pendingSeatRequest: null, // 等待发送的座位请求
 
     // ========================================
     // 图像配置 - 修改这些变量来自定义牌桌和扑克牌样式
@@ -55,6 +56,32 @@ const PyPoker = {
         currentBet: 0,
         minBet: 0,
         maxBet: 0,
+        isSeated: function() {
+            const playerId = PyPoker.Game.getCurrentPlayerId();
+            if (!playerId) return false;
+            return !!document.querySelector(`.seat[data-player-id="${playerId}"]`);
+        },
+        resetReadyStatus: function() {
+            const readyBtn = document.getElementById('ready-btn');
+            if (!readyBtn) return;
+            if (readyBtn.textContent.trim() !== 'READY') {
+                readyBtn.textContent = 'READY';
+                readyBtn.classList.remove('bg-neutral-700', 'text-neutral-400', 'border-neutral-600');
+                readyBtn.classList.add('bg-gradient-to-b', 'from-emerald-500', 'to-emerald-700', 'text-white');
+            }
+        },
+        updateReadyButtonState: function() {
+            const readyBtn = document.getElementById('ready-btn');
+            if (!readyBtn) return;
+            if (PyPoker.Player.isSeated()) {
+                readyBtn.disabled = false;
+                readyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                readyBtn.disabled = true;
+                readyBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                PyPoker.Player.resetReadyStatus();
+            }
+        },
 
         // This function is the core of the UI update
         updateBetDisplay: function() {
@@ -234,6 +261,10 @@ const PyPoker = {
         },
 
         toggleReadyStatus: function() {
+            if (!PyPoker.Player.isSeated()) {
+                PyPoker.Logger.log('请先选择座位');
+                return;
+            }
             const readyBtn = document.getElementById('ready-btn');
             // const statusIndicator = document.getElementById('status-indicator'); // Removed
 
@@ -994,6 +1025,7 @@ const PyPoker = {
                 }
                 seatsContainer.appendChild(seatDiv);
             }
+            PyPoker.Player.updateReadyButtonState();
         },
 
         onRoomUpdate: function(message) {
@@ -1134,6 +1166,7 @@ const PyPoker = {
                     }
                     break;
             }
+            PyPoker.Player.updateReadyButtonState();
         }
     },
 
@@ -1178,6 +1211,10 @@ const PyPoker = {
                         'message_type': 'pong',
                         'ready': isReady
                     };
+                    if (PyPoker.pendingSeatRequest !== null) {
+                        pongMsg.seat_request = PyPoker.pendingSeatRequest;
+                        PyPoker.pendingSeatRequest = null;
+                    }
                     if (PyPoker.wantsToStartFinalHands) {
                         pongMsg.start_final_10_hands = true;
                         PyPoker.wantsToStartFinalHands = false;
@@ -1187,6 +1224,12 @@ const PyPoker = {
 
                 case 'room-update':
                     PyPoker.Room.onRoomUpdate(data);
+                    break;
+
+                case 'error':
+                    if (data && data.error) {
+                        PyPoker.Logger.log('错误: ' + data.error);
+                    }
                     break;
 
                 case 'game-update':
@@ -1263,6 +1306,21 @@ const PyPoker = {
         PyPoker.Game.fetchRankingData();
 
         // === 事件绑定 ===
+
+        const seatsContainer = document.getElementById('seats-container');
+        if (seatsContainer) {
+            seatsContainer.addEventListener('click', function(event) {
+                const seat = event.target.closest('.seat');
+                if (!seat || !seat.classList.contains('empty')) return;
+
+                const seatIndex = parseInt(seat.getAttribute('data-key'), 10);
+                if (Number.isNaN(seatIndex)) return;
+
+                PyPoker.pendingSeatRequest = seatIndex;
+                PyPoker.Player.resetReadyStatus();
+                PyPoker.Logger.log('已选择座位，等待入座...');
+            });
+        }
 
         // Ready 按钮
         document.getElementById('ready-btn').addEventListener('click', function() {
