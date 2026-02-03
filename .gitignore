@@ -1,3 +1,14 @@
 *.pyc
 .idea
 env.sh
+.DS_Store
+database/poker.sqlite3
+identifier.sqlite
+node_modules/
+output/
+package-lock.json
+package.json
+static/.DS_Store
+static/images/.DS_Store
+test_auto_topup.py
+test_navigator_fix.py
