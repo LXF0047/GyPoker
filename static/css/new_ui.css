@@ -27,15 +27,75 @@
     padding: 0;
 }
 
+html {
+    height: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     font-family: 'Playfair Display', Georgia, serif;
     background: radial-gradient(ellipse at 50% 0%, rgba(212, 175, 55, 0.03) 0%, transparent 50%),
     radial-gradient(circle at center, #121212 0%, #000000 100%);
     color: var(--text-bright);
     height: 100vh; /* 兼容旧浏览器 */
+    height: calc(var(--vh, 1vh) * 100); /* iOS/旧浏览器的可视高度修正 */
     height: 100dvh; /* 针对现代移动端浏览器 */
     overflow: hidden;
     display: flex;
+    overscroll-behavior: none;
+}
+
+/* === Touch polish === */
+button,
+.tab-btn,
+.mobile-toggle,
+.interaction-btn,
+.seat,
+.card {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+@media (hover: none) {
+    .msg:hover {
+        background: rgba(255, 255, 255, 0.02);
+        border-left-color: transparent;
+    }
+
+    .rank-item:hover {
+        transform: none;
+        border-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .card:hover {
+        transform: none;
+        box-shadow: 0.15cqmin 0.15cqmin 0 #ccc,
+        0.3cqmin 0.3cqmin 0 #bbb,
+        0 1.2cqmin 3cqmin rgba(0, 0, 0, 0.4);
+    }
+
+    .seat.empty:hover .avatar {
+        border-color: #444;
+    }
+
+    .seat.empty:hover .avatar::before {
+        color: #444;
+    }
+
+    .interaction-btn:hover:not(:disabled) {
+        background: rgba(212, 175, 55, 0.1);
+        border-color: rgba(212, 175, 55, 0.3);
+    }
+}
+
+.interaction-btn:active:not(:disabled) {
+    background: rgba(212, 175, 55, 0.2);
+    border-color: var(--accent-gold);
+}
+
+.seat:active .avatar {
+    border-color: var(--accent-gold);
 }
 
 /* === 侧边栏 === */
@@ -115,10 +175,14 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0; /* Ensure flex item can shrink below content size */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 #chat-messages-container {
     min-height: 0; /* Ensure flex item can shrink below content size */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .panel-content::-webkit-scrollbar {
@@ -1159,7 +1223,7 @@ body {
 .my-hand-display {
     display: flex;
     gap: 0.375cqmin; /* Scaled down from 0.5cqmin */
-    height: 10.7cqmin; /* Scaled down from 10.7cqmin */
+    height: max(62px, 10.7cqmin); /* Ensure tappable size on mobile */
     align-items: center;
     padding: 0 0.75cqmin; /* Scaled down from 1cqmin */
     /* 确保手牌在左侧 */
@@ -1170,10 +1234,34 @@ body {
 }
 
 .my-hand-display .card {
-    width: 7.6cqmin; /* Scaled down from 7.6cqmin */
-    height: 10.7cqmin; /* Scaled down from 10.64cqmin */
+    width: max(44px, 7.6cqmin); /* Ensure tappable size on mobile */
+    height: max(62px, 10.7cqmin); /* Ensure tappable size on mobile */
     box-shadow: 0 0.375cqmin 1.125cqmin rgba(0, 0, 0, 0.5); /* Scaled down */
     cursor: pointer;
+}
+
+/* === Mobile touch target clamp === */
+@media (hover: none) and (pointer: coarse) {
+    .chat-input {
+        font-size: 16px; /* Prevent iOS focus-zoom */
+    }
+
+    #ready-btn {
+        height: max(44px, 5cqmin);
+        width: max(140px, 15cqmin);
+        font-size: max(16px, 1.8cqmin);
+        margin-right: 0;
+        margin-bottom: max(8px, 6cqmin);
+    }
+
+    .avatar {
+        width: max(44px, 9.5cqmin);
+        height: max(44px, 9.5cqmin);
+    }
+
+    .seat.empty .avatar::before {
+        font-size: max(20px, 2cqmin);
+    }
 }
 
 .card.is-flipping {
@@ -1264,14 +1352,17 @@ body {
 /* === 移动端适配 === */
 @media (max-width: 1024px) {
     .sidebar {
-        position: absolute;
+        position: fixed;
         top: 0;
         right: 0;
-        height: 100%;
+        height: 100vh;
+        height: calc(var(--vh, 1vh) * 100);
+        height: 100dvh;
         width: 85%;
         max-width: 350px;
         transform: translateX(100%);
         z-index: 500;
+        will-change: transform;
     }
 
     .sidebar.open {

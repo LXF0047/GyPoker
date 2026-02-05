@@ -1557,7 +1557,26 @@ function handleChat(e) {
     }
 }
 
+function setupViewportHeightVar() {
+    const root = document.documentElement;
+
+    const update = () => {
+        const h = window.visualViewport?.height || window.innerHeight;
+        root.style.setProperty('--vh', `${h * 0.01}px`);
+    };
+
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', () => setTimeout(update, 50));
+
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', update);
+        window.visualViewport.addEventListener('scroll', update);
+    }
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
+    setupViewportHeightVar();
     PyPoker.init();
 });
