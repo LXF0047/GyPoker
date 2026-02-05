@@ -7,7 +7,7 @@
 
 import pysqlite3 as sqlite3
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .base import get_db_connection
 
 def get_player_by_login_username(username: str) -> Optional[Dict[str, Any]]:
@@ -64,6 +64,30 @@ def get_player_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     except sqlite3.Error as e:
         logging.error(f"Error fetching player by id {user_id}: {e}")
         return None
+    finally:
+        conn.close()
+
+
+def get_players_by_nickname_prefix(prefix: str) -> List[Dict[str, Any]]:
+    """
+    Find players by nickname prefix. Returns list of dicts with player info + chips.
+    """
+    conn = get_db_connection()
+    if not conn:
+        return []
+
+    try:
+        cursor = conn.execute("""
+                              SELECT p.id, p.username, p.nickname, p.avatar, w.chips
+                              FROM players p
+                                       LEFT JOIN wallet w ON p.id = w.player_id
+                              WHERE p.nickname LIKE ? OR p.username LIKE ?
+                              """, (f"{prefix}%", f"{prefix}%"))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows] if rows else []
+    except sqlite3.Error as e:
+        logging.error(f"Error fetching players by nickname prefix {prefix}: {e}")
+        return []
     finally:
         conn.close()
 

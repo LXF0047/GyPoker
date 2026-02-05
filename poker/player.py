@@ -2,13 +2,15 @@ from .config import INIT_MONEY
 
 
 class Player:
-    def __init__(self, id, name, money, avatar=None, ready=False):
+    def __init__(self, id, name, money, avatar=None, ready=False, is_bot: bool = False, bot_difficulty: str = None):
         self._id = id
         self._name = name
         self._money = money
         self._avatar = avatar
         self.seat = None
         self._ready = ready
+        self.is_bot = bool(is_bot)
+        self.bot_difficulty = bot_difficulty
 
     @property
     def id(self) -> int:
@@ -37,6 +39,8 @@ class Player:
             "money": self.money,
             "avatar": self.avatar,
             "ready": self.ready,
+            "is_bot": self.is_bot,
+            "bot_difficulty": self.bot_difficulty,
         }
 
     def take_money(self, money: float):

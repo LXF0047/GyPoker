@@ -15,6 +15,7 @@ from .db_utils import get_or_create_table, create_hand, add_hand_player, update_
 from .config import INIT_MONEY, TIMEOUT_TOLERANCE, BET_TIMEOUT, WAIT_AFTER_FLOP_TURN_RIVER
 import logging
 
+from .bots.decision import BotDecisionContext
 
 class HoldemPokerGameFactory(GameFactory):
     def __init__(self, big_blind: float, small_blind: float, logger,
@@ -108,6 +109,9 @@ class HoldemPokerGame(PokerGame):
         self._pots = []  # 当前局的底池列表
         self._hand_stats = {}  # 玩家本局统计数据
         self._preflop_raise_count = 0  # 翻前加注次数，用于计算3-bet
+        self._scores = None
+        self._action_history = []
+        self._dealer_id = None
 
     def __check_no_money_players(self):
         # 没钱的自动贷款
@@ -134,7 +138,10 @@ class HoldemPokerGame(PokerGame):
 
     def _reset_ready_state(self):
         for player in self._game_players.all:
-            player._ready = False
+            if getattr(player, "is_bot", False):
+                player._ready = True
+            else:
+                player._ready = False
 
     def _showdown(self, scores):
         """
@@ -220,6 +227,78 @@ class HoldemPokerGame(PokerGame):
             on_action_callback=self._on_player_action
         )
 
+    def _build_bot_context(self, player, min_bet, max_bet, bets):
+        scores = self._scores
+        board_cards = [c.dto() for c in scores.shared_cards] if scores else []
+        hand_cards = [c.dto() for c in scores.player_cards(player.id)] if scores else []
+
+        players_payload = []
+        for p in self._game_players.all:
+            players_payload.append({
+                "id": p.id,
+                "name": p.name,
+                "seat": getattr(p, "seat", None),
+                "money": p.money,
+                "active": self._game_players.is_active(p.id),
+                "is_bot": getattr(p, "is_bot", False),
+                "bot_difficulty": getattr(p, "bot_difficulty", None)
+            })
+
+        pot_total = 0
+        try:
+            pot_total = sum(getattr(p, "money", 0) for p in self._pots)
+        except Exception:
+            pot_total = 0
+        try:
+            pot_total += sum(int(v) for v in bets.values())
+        except Exception:
+            pass
+
+        return BotDecisionContext(
+            room_id=str(self._room_id) if self._room_id is not None else "",
+            game_id=str(self._id),
+            street=self._street,
+            player_id=player.id,
+            player_name=player.name,
+            seat=getattr(player, "seat", None),
+            hand=hand_cards,
+            board=board_cards,
+            players=players_payload,
+            pot_total=int(pot_total),
+            street_bets={int(k): int(v) for k, v in (bets or {}).items()},
+            min_bet=int(min_bet),
+            max_bet=int(max_bet),
+            to_call=int(min_bet),
+            action_history=list(self._action_history)
+        )
+
+    def get_bet(self, player, min_bet: float, max_bet: float, bets):
+        if getattr(player, "is_bot", False):
+            engine = getattr(player, "bot_engine", None)
+            if not engine:
+                return -1
+            context = self._build_bot_context(player, min_bet, max_bet, bets)
+            try:
+                decision = engine.decide(context)
+            except Exception as e:
+                self._logger.error("Bot decision failed: %s", e)
+                return -1
+
+            try:
+                decision = int(round(float(decision)))
+            except Exception:
+                return -1
+
+            if decision == -1:
+                return -1
+            if decision < min_bet:
+                return 0 if min_bet == 0 else int(min_bet)
+            if decision > max_bet:
+                return int(max_bet)
+            return int(decision)
+
+        return super().get_bet(player, min_bet, max_bet, bets)
+
     def _on_player_action(self, player, bet, min_bet, max_bet, bets, forced_action_type: str = None):
         """记录玩家行动到数据库。
 
@@ -230,9 +309,6 @@ class HoldemPokerGame(PokerGame):
         - bets: 本轮下注字典（包含各玩家在本轮/本街的下注累计，具体由 bet_handler 维护）
         - forced_action_type: 强制记录的动作类型（例如盲注 'blind'）
         """
-        if not self._db_hand_id:
-            return
-
         self._action_num += 1
 
         # ---- 1) 计算动作类型 ----
@@ -284,6 +360,19 @@ class HoldemPokerGame(PokerGame):
             pot_before_i = int(pot_before)
         except Exception:
             pot_before_i = int(round(pot_before))
+
+        # ---- 3) 记录行动历史（供机器人/调试使用） ----
+        self._action_history.append({
+            "street": self._street,
+            "action_num": self._action_num,
+            "player_id": player.id,
+            "action_type": action_type,
+            "amount": amount,
+            "pot_before": pot_before_i
+        })
+
+        if not self._db_hand_id:
+            return
 
         if not add_hand_action(
             self._db_hand_id,
@@ -476,6 +565,9 @@ class HoldemPokerGame(PokerGame):
                 'wsd': 0
             } for p in self._game_players.all
         }
+        self._action_history = []
+        self._scores = scores
+        self._dealer_id = dealer_id
         self._init_db_record(dealer_id)
         
         # Capture starting stacks for net calculation

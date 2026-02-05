@@ -6,6 +6,7 @@ import gevent
 from .player_server import PlayerServer
 from .poker_game import GameSubscriber, GameError, GameFactory
 from .db_utils import update_player_wallet
+from .bots.bot_factory import create_bot_player
 
 
 class FullGameRoomException(Exception):
@@ -73,7 +74,16 @@ class GameRoomPlayers:
         """
         self._lock.acquire()
         try:
-            return self._players[player_id]
+            try:
+                return self._players[player_id]
+            except KeyError:
+                if isinstance(player_id, str) and player_id.isdigit():
+                    return self._players[int(player_id)]
+                if isinstance(player_id, int):
+                    alt = self._players.get(str(player_id))
+                    if alt is not None:
+                        return alt
+                raise
         except KeyError:
             raise UnknownRoomPlayerException
         finally:
@@ -178,7 +188,7 @@ class GameRoomEventHandler:
                 self._room_id,
                 event,
                 player_id,
-                "\n - ".join([seat if seat is not None else "(empty seat)" for seat in self._room_players.seats])
+                "\n - ".join([str(seat) if seat is not None else "(empty seat)" for seat in self._room_players.seats])
             ) + "\n" +
             ("-" * 80) + "\n"
         )
@@ -264,6 +274,65 @@ class GameRoom(GameSubscriber):
                     player.send_message(event_message)
         finally:
             self._lock.release()
+
+    def add_bot(self, requester_id: str, seat_index: int, difficulty: str):
+        if str(requester_id) != str(self.owner):
+            return False, "Only room owner can add bots"
+        if seat_index < 0 or seat_index >= len(self._room_players.seats):
+            return False, "Invalid seat"
+        if self._room_players.seats[seat_index] is not None:
+            return False, "Seat occupied"
+
+        current_ids = [int(p.id) for p in self._room_players.players]
+        current_names = [p.name for p in self._room_players.players]
+        bot_player = create_bot_player(
+            self._logger,
+            difficulty=difficulty,
+            exclude_ids=current_ids,
+            exclude_names=current_names
+        )
+        if not bot_player:
+            return False, "Failed to create bot"
+
+        try:
+            self._room_players.add_player(bot_player)
+        except FullGameRoomException:
+            return False, "Room is full"
+
+        assigned = self._room_players.assign_seat(bot_player.id, seat_index)
+        if not assigned:
+            self._room_players.remove_player(bot_player.id)
+            return False, "Seat occupied"
+
+        self._room_event_handler.room_event("player-added", bot_player.id, self.owner)
+        return True, bot_player.id
+
+    def remove_bot(self, requester_id: str, bot_id: str = None, seat_index: int = None):
+        if str(requester_id) != str(self.owner):
+            return False, "Only room owner can remove bots"
+        if self.hand_in_progress:
+            return False, "Cannot remove bots during a hand"
+
+        target_id = bot_id
+        if target_id is None and seat_index is not None:
+            seats = self._room_players.seats
+            if seat_index < 0 or seat_index >= len(seats):
+                return False, "Invalid seat"
+            target_id = seats[seat_index]
+
+        if not target_id:
+            return False, "Bot not found"
+
+        try:
+            player = self._room_players.get_player(target_id)
+        except UnknownRoomPlayerException:
+            return False, "Bot not found"
+
+        if not getattr(player, "is_bot", False):
+            return False, "Target is not a bot"
+
+        self._leave(player.id)
+        return True, player.id
 
     def leave(self, player_id: str):
         self._lock.acquire()

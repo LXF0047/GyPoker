@@ -1118,6 +1118,23 @@ body {
     color: var(--accent-gold);
 }
 
+.bot-remove-btn {
+    margin-top: 0.4cqmin;
+    font-size: 1.2cqmin;
+    color: #fecaca;
+    background: rgba(185, 28, 28, 0.65);
+    border: 1px solid #ef4444;
+    border-radius: 999px;
+    padding: 0.1cqmin 0.8cqmin;
+    cursor: pointer;
+    text-shadow: 0 0 0.4cqmin rgba(0, 0, 0, 0.6);
+}
+
+.bot-remove-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* === 底部UI容器 === */
 .bottom-ui-container {
     position: absolute;

@@ -107,8 +107,66 @@ def init_system_users():
         conn.close()
 
 
+def init_bot_players():
+    """按名字初始化27名机器人玩家"""
+    bot_player_names = [
+        "Doyle Brunson",
+        "Stu Ungar",
+        "Johnny Chan",
+        "Phil Hellmuth",
+        "Phil Ivey",
+        "Daniel Negreanu",
+        "Erik Seidel",
+        "Justin Bonomo",
+        "Bryn Kenney",
+        "Jason Koon",
+        "Stephen Chidwick",
+        "Fedor Holz",
+        "Tom Dwan",
+        "Antonio Esfandiari",
+        "Dan Smith",
+        "Isaac Haxton",
+        "Mikita Badziakouski",
+        "Linus Loeliger",
+        "Doug Polk",
+        "Chip Reese",
+        "Johnny Moss",
+        "Amarillo Slim Preston",
+        "Jennifer Harman",
+        "Vanessa Selbst",
+        "Patrik Antonius",
+        "Viktor Blom",
+        "Joe Cada"
+    ]
+    conn = get_db_connection()
+    if not conn:
+        return
+
+    try:
+        cursor = conn.cursor()
+        for idx, name in enumerate(bot_player_names):
+            if idx < 9:
+                name_id = "easy_bot_{}".format(idx + 1)
+            elif idx < 18:
+                name_id = "medium_bot_{}".format(idx - 8)
+            else:
+                name_id = "hard_bot_{}".format(idx - 17)
+            cursor.execute("""
+                           INSERT INTO players (username, password_hash, nickname)
+                           VALUES (?, ?, ?)
+                           """, (name_id, generate_password_hash("root"), name))
+        conn.commit()
+        print("Bot players initialized successfully.")
+    except sqlite3.IntegrityError:
+        print("Error: One or more bot players already exist.")
+    except sqlite3.Error as e:
+        print(f"Error initializing bot players: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
-    # 1. Reset DB
-    clear_all_data()
-    # 2. Add system users
-    init_system_users()
+    # clear_all_data()
+    # init_system_users()
+    init_bot_players()
