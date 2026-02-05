@@ -1,6 +1,12 @@
+import os
+
+# IMPORTANT: bot decisions may perform HTTP requests. Patch stdlib for gevent so those
+# requests yield cooperatively and don't block the whole game loop.
+import gevent.monkey
+gevent.monkey.patch_all()
+
 import logging
 import redis
-import os
 
 from poker.game_server_redis import GameServerRedis
 from poker.game_room import GameRoomFactory

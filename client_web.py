@@ -14,6 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from poker.channel import ChannelError, MessageFormatError, MessageTimeout
+from poker.channel_redis import MessageQueue
 from poker.player import Player
 from poker.player_client import PlayerClientConnector
 from poker.db_utils import get_player_by_id, get_player_by_login_username, create_player, get_api_key, get_player_analysis_data, get_daily_ranking_list, check_and_reset_daily_chips, update_player_profile
@@ -33,6 +34,7 @@ socketio = SocketIO(app)
 
 redis_url = os.environ["REDIS_URL"]
 redis = redis.from_url(redis_url)
+room_control_queue = MessageQueue(redis, "texas-holdem-poker:room-control")
 
 INVITE_CODE = "asd"
 player_channels = {}
@@ -385,6 +387,43 @@ def on_game_message(message):
                 player_info['channel'].send_message(message)
             except (ChannelError, MessageFormatError):
                 pass
+
+
+@socketio.on('room_action')
+def on_room_action(data):
+    if "player-id" not in session:
+        emit("error", {"error": "Unrecognized user"})
+        return
+
+    action = data.get("action")
+    if action not in ("add-bot", "remove-bot"):
+        emit("error", {"error": "Invalid room action"})
+        return
+
+    room_id = session.get("room-id")
+    requester_id = session.get("player-id")
+    if not room_id or not requester_id:
+        emit("error", {"error": "Missing room context"})
+        return
+
+    message = {
+        "message_type": "room-control",
+        "action": action,
+        "room_id": room_id,
+        "requester_id": requester_id
+    }
+
+    if "seat_index" in data:
+        message["seat_index"] = data.get("seat_index")
+    if "difficulty" in data:
+        message["difficulty"] = data.get("difficulty")
+    if "bot_id" in data:
+        message["bot_id"] = data.get("bot_id")
+
+    try:
+        room_control_queue.push(message)
+    except Exception:
+        emit("error", {"error": "Failed to send room action"})
 
 
 @socketio.on('join_game')

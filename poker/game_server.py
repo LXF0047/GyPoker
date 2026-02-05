@@ -45,6 +45,12 @@ class GameServer:
             self._rooms.append(room)
             return room
 
+    def get_room_by_id(self, room_id: str) -> GameRoom:
+        try:
+            return next(room for room in self._rooms if room.id == room_id)
+        except StopIteration:
+            return None
+
     def _join_private_room(self, player: PlayerServer, room_id: str) -> GameRoom:
         """加入私有房间"""
         self._lobby_lock.acquire()

@@ -3,6 +3,8 @@ from typing import Generator
 
 from redis import Redis
 
+import gevent
+
 from .game_room import GameRoomFactory
 from .channel_redis import MessageQueue, ChannelRedis, ChannelError, MessageFormatError, MessageTimeout
 from .game_server import GameServer, ConnectedPlayer
@@ -20,6 +22,7 @@ class GameServerRedis(GameServer):
         GameServer.__init__(self, room_factory, logger)
         self._redis: Redis = redis
         self._connection_queue = MessageQueue(redis, connection_channel)  # 游戏大厅队列
+        self._room_control_queue = MessageQueue(redis, "texas-holdem-poker:room-control")
 
     def _connect_player(self, message) -> ConnectedPlayer:
         """
@@ -118,3 +121,58 @@ class GameServerRedis(GameServer):
                 yield self._connect_player(self._connection_queue.pop())
             except (ChannelError, MessageTimeout, MessageFormatError) as e:
                 self._logger.error("Unable to connect the player: {}".format(e.args[0]))
+
+    def on_start(self):
+        gevent.spawn(self._room_control_loop)
+
+    def _room_control_loop(self):
+        while True:
+            try:
+                message = self._room_control_queue.pop()
+            except (ChannelError, MessageTimeout, MessageFormatError) as e:
+                self._logger.error("Room control queue error: {}".format(e.args[0]))
+                continue
+
+            if not isinstance(message, dict):
+                continue
+
+            if message.get("message_type") != "room-control":
+                continue
+
+            room_id = message.get("room_id")
+            action = message.get("action")
+            requester_id = message.get("requester_id")
+            self._logger.info("Room control message: action=%s room=%s requester=%s seat=%s bot=%s diff=%s",
+                              action, room_id, requester_id, message.get("seat_index"), message.get("bot_id"), message.get("difficulty"))
+            if not room_id or not action or not requester_id:
+                continue
+
+            room = self.get_room_by_id(room_id)
+            if not room:
+                self._logger.warning("Room control: room not found %s", room_id)
+                continue
+
+            if action == "add-bot":
+                seat_index = message.get("seat_index")
+                if seat_index is None:
+                    continue
+                difficulty = message.get("difficulty") or "easy"
+                ok, result = room.add_bot(requester_id, int(seat_index), difficulty)
+                self._logger.info("Room control add-bot result: ok=%s result=%s", ok, result)
+                if not ok:
+                    try:
+                        player = room._room_players.get_player(requester_id)
+                        player.try_send_message({"message_type": "error", "error": result})
+                    except Exception:
+                        pass
+            elif action == "remove-bot":
+                seat_index = message.get("seat_index")
+                bot_id = message.get("bot_id")
+                ok, result = room.remove_bot(requester_id, bot_id=bot_id, seat_index=seat_index)
+                self._logger.info("Room control remove-bot result: ok=%s result=%s", ok, result)
+                if not ok:
+                    try:
+                        player = room._room_players.get_player(requester_id)
+                        player.try_send_message({"message_type": "error", "error": result})
+                    except Exception:
+                        pass

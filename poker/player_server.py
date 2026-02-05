@@ -11,6 +11,7 @@ class PlayerServer(Player):
         Player.__init__(self, *args, **kwargs)
         self._channel: Channel = channel
         self._connected: bool = True
+        self._pending_seat_request: Optional[int] = None
         self.wants_to_start_final_10_hands: bool = False
         self._logger = logger if logger else logging
 
@@ -28,6 +29,12 @@ class PlayerServer(Player):
     @property
     def connected(self) -> bool:
         return self._connected
+
+    def get_pending_seat_request(self) -> Optional[int]:
+        return self._pending_seat_request
+
+    def clear_pending_seat_request(self):
+        self._pending_seat_request = None
 
     def update_channel(self, new_player):
         old_channel = self._channel
@@ -55,6 +62,11 @@ class PlayerServer(Player):
                 self._ready = bool(message["ready"])
             if "start_final_10_hands" in message:
                 self.wants_to_start_final_10_hands = bool(message["start_final_10_hands"])
+            if "seat_request" in message:
+                try:
+                    self._pending_seat_request = int(message["seat_request"])
+                except (TypeError, ValueError):
+                    self._logger.info("Invalid seat_request from player {}: {}".format(self.id, message.get("seat_request")))
             return True
         except (ChannelError, MessageTimeout, MessageFormatError) as e:
             # 降低日志级别，ping超时是正常的重连场景

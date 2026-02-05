@@ -9,8 +9,11 @@ const PyPoker = {
     players: {},
     playerIds: [],
     ownerId: null,
+    isHandInProgress: false,
+    botAddMode: false,
     countdownInterval: null, // 倒计时定时器
     interactionCooldowns: {}, // 互动按钮冷却
+    pendingSeatRequest: null, // 等待发送的座位请求
 
     // ========================================
     // 图像配置 - 修改这些变量来自定义牌桌和扑克牌样式
@@ -55,6 +58,32 @@ const PyPoker = {
         currentBet: 0,
         minBet: 0,
         maxBet: 0,
+        isSeated: function() {
+            const playerId = PyPoker.Game.getCurrentPlayerId();
+            if (!playerId) return false;
+            return !!document.querySelector(`.seat[data-player-id="${playerId}"]`);
+        },
+        resetReadyStatus: function() {
+            const readyBtn = document.getElementById('ready-btn');
+            if (!readyBtn) return;
+            if (readyBtn.textContent.trim() !== 'READY') {
+                readyBtn.textContent = 'READY';
+                readyBtn.classList.remove('bg-neutral-700', 'text-neutral-400', 'border-neutral-600');
+                readyBtn.classList.add('bg-gradient-to-b', 'from-emerald-500', 'to-emerald-700', 'text-white');
+            }
+        },
+        updateReadyButtonState: function() {
+            const readyBtn = document.getElementById('ready-btn');
+            if (!readyBtn) return;
+            if (PyPoker.Player.isSeated()) {
+                readyBtn.disabled = false;
+                readyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                readyBtn.disabled = true;
+                readyBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                PyPoker.Player.resetReadyStatus();
+            }
+        },
 
         // This function is the core of the UI update
         updateBetDisplay: function() {
@@ -234,6 +263,10 @@ const PyPoker = {
         },
 
         toggleReadyStatus: function() {
+            if (!PyPoker.Player.isSeated()) {
+                PyPoker.Logger.log('请先选择座位');
+                return;
+            }
             const readyBtn = document.getElementById('ready-btn');
             // const statusIndicator = document.getElementById('status-indicator'); // Removed
 
@@ -248,6 +281,51 @@ const PyPoker = {
                 readyBtn.classList.remove('bg-neutral-700', 'text-neutral-400', 'border-neutral-600');
                 readyBtn.classList.add('bg-gradient-to-b', 'from-emerald-500', 'to-emerald-700', 'text-white');
             }
+        }
+    },
+
+    Bot: {
+        setHandInProgress: function(inProgress) {
+            PyPoker.isHandInProgress = inProgress;
+            PyPoker.Room.onRoomUpdate({
+                event: 'readiness-update',
+                room_id: PyPoker.roomId,
+                players: PyPoker.players,
+                player_ids: PyPoker.playerIds,
+                owner_id: PyPoker.ownerId,
+                player_id: null
+            });
+        },
+        toggleAddMode: function() {
+            PyPoker.botAddMode = !PyPoker.botAddMode;
+            const btn = document.getElementById('add-bot-btn');
+            if (!btn) return;
+            if (PyPoker.botAddMode) {
+                btn.textContent = '选择座位中...';
+                PyPoker.Logger.log('请选择空座位添加机器人');
+            } else {
+                btn.textContent = '添加机器人';
+            }
+        },
+        addBotToSeat: function(seatIndex) {
+            const difficulty = document.getElementById('bot-difficulty')?.value || 'easy';
+            console.log('addBotToSeat:', { seatIndex, difficulty });
+            PyPoker.socket.emit('room_action', {
+                action: 'add-bot',
+                seat_index: seatIndex,
+                difficulty: difficulty
+            });
+            PyPoker.Logger.log('已发送添加机器人请求');
+            PyPoker.botAddMode = false;
+            const btn = document.getElementById('add-bot-btn');
+            if (btn) btn.textContent = '添加机器人';
+        },
+        removeBot: function(botId, seatIndex) {
+            PyPoker.socket.emit('room_action', {
+                action: 'remove-bot',
+                bot_id: botId,
+                seat_index: seatIndex
+            });
         }
     },
 
@@ -764,12 +842,14 @@ const PyPoker = {
             switch (message.event) {
                 case 'new-game':
                     PyPoker.Game.newGame(message);
+                    PyPoker.Bot.setHandInProgress(true);
                     break;
                 case 'cards-assignment':
                     PyPoker.Game.updateCurrentPlayerCards(message.cards, message.score);
                     break;
                 case 'game-over':
                     PyPoker.Game.gameOver();
+                    PyPoker.Bot.setHandInProgress(false);
                     break;
                 case 'fold':
                     PyPoker.Game.playerFold(message.player);
@@ -948,6 +1028,22 @@ const PyPoker = {
 
     // 房间管理
     Room: {
+        buildSeatHtml: function(player, isCurrentPlayer) {
+            const isBot = player && player.is_bot;
+            const showRemove = isBot && PyPoker.ownerId == PyPoker.Game.getCurrentPlayerId() && !PyPoker.isHandInProgress;
+            return `
+                <div class="avatar-container">
+                    <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
+                    <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
+                </div>
+                <div class="player-info">
+                    <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
+                    <div class="player-balance">$${parseInt(player.money)}</div>
+                </div>
+                <div class="hand-cards"></div>
+                ${showRemove ? `<button class="bot-remove-btn" data-bot-id="${player.id}">移除</button>` : ''}
+            `;
+        },
         initRoom: function(message) {
             console.log("initRoom called with message:", message);
             PyPoker.roomId = message.room_id;
@@ -973,17 +1069,7 @@ const PyPoker = {
                     seatDiv.setAttribute('data-player-id', playerId);
                     if (isCurrentPlayer) seatDiv.classList.add('current-player-seat');
 
-                    seatDiv.innerHTML = `
-                        <div class="avatar-container">
-                            <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
-                            <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
-                        </div>
-                        <div class="player-info">
-                            <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
-                            <div class="player-balance">$${parseInt(player.money)}</div>
-                        </div>
-                        <div class="hand-cards"></div>
-                    `;
+                    seatDiv.innerHTML = PyPoker.Room.buildSeatHtml(player, isCurrentPlayer);
                 } else {
                     seatDiv.classList.add('empty');
                     seatDiv.innerHTML = `
@@ -994,6 +1080,7 @@ const PyPoker = {
                 }
                 seatsContainer.appendChild(seatDiv);
             }
+            PyPoker.Player.updateReadyButtonState();
         },
 
         onRoomUpdate: function(message) {
@@ -1008,8 +1095,15 @@ const PyPoker = {
             // 房主功能按钮显示
             if (message.owner_id == currentPlayerId) {
                 document.getElementById('last-10-hands-btn').style.display = 'inline-block';
+                const botControls = document.getElementById('bot-controls');
+                if (botControls) botControls.style.display = 'flex';
             } else {
                 document.getElementById('last-10-hands-btn').style.display = 'none';
+                const botControls = document.getElementById('bot-controls');
+                if (botControls) botControls.style.display = 'none';
+                PyPoker.botAddMode = false;
+                const addBtn = document.getElementById('add-bot-btn');
+                if (addBtn) addBtn.textContent = '添加机器人';
             }
 
             // 更新房主名称
@@ -1052,18 +1146,8 @@ const PyPoker = {
                                 seat.setAttribute('data-player-id', playerId);
                                 if (isCurrentPlayer) seat.classList.add('current-player-seat');
                                 else seat.classList.remove('current-player-seat');
-                                
-                                seat.innerHTML = `
-                                    <div class="avatar-container">
-                                        <div class="avatar" ${player.avatar ? `style="background-image: url('${player.avatar}'); background-size: cover; background-position: center;"` : ''}>${player.avatar ? '' : player.name.charAt(0).toUpperCase()}</div>
-                                        <div class="readiness-dot ${player.ready ? 'ready' : ''}"></div>
-                                    </div>
-                                    <div class="player-info">
-                                        <div class="player-name">${isCurrentPlayer ? 'You' : player.name}</div>
-                                        <div class="player-balance">$${parseInt(player.money)}</div>
-                                    </div>
-                                    <div class="hand-cards"></div>
-                                `;
+
+                                seat.innerHTML = PyPoker.Room.buildSeatHtml(player, isCurrentPlayer);
                             } else {
                                 // Seat already occupied by this player, just update info
                                 const balance = seat.querySelector('.player-balance');
@@ -1096,6 +1180,17 @@ const PyPoker = {
                                     } else {
                                         readinessDot.classList.remove('ready');
                                     }
+                                }
+
+                                const existingRemove = seat.querySelector('.bot-remove-btn');
+                                if (existingRemove) existingRemove.remove();
+                                const shouldShowRemove = player.is_bot && PyPoker.ownerId == currentPlayerId && !PyPoker.isHandInProgress;
+                                if (shouldShowRemove) {
+                                    const removeBtn = document.createElement('button');
+                                    removeBtn.className = 'bot-remove-btn';
+                                    removeBtn.textContent = '移除';
+                                    removeBtn.setAttribute('data-bot-id', player.id);
+                                    seat.appendChild(removeBtn);
                                 }
                             }
                         } else {
@@ -1134,6 +1229,7 @@ const PyPoker = {
                     }
                     break;
             }
+            PyPoker.Player.updateReadyButtonState();
         }
     },
 
@@ -1178,6 +1274,10 @@ const PyPoker = {
                         'message_type': 'pong',
                         'ready': isReady
                     };
+                    if (PyPoker.pendingSeatRequest !== null) {
+                        pongMsg.seat_request = PyPoker.pendingSeatRequest;
+                        PyPoker.pendingSeatRequest = null;
+                    }
                     if (PyPoker.wantsToStartFinalHands) {
                         pongMsg.start_final_10_hands = true;
                         PyPoker.wantsToStartFinalHands = false;
@@ -1187,6 +1287,12 @@ const PyPoker = {
 
                 case 'room-update':
                     PyPoker.Room.onRoomUpdate(data);
+                    break;
+
+                case 'error':
+                    if (data && data.error) {
+                        PyPoker.Logger.log('错误: ' + data.error);
+                    }
                     break;
 
                 case 'game-update':
@@ -1263,6 +1369,50 @@ const PyPoker = {
         PyPoker.Game.fetchRankingData();
 
         // === 事件绑定 ===
+
+        const seatsContainer = document.getElementById('seats-container');
+        if (seatsContainer) {
+            seatsContainer.addEventListener('click', function(event) {
+                const removeBtn = event.target.closest('.bot-remove-btn');
+                if (removeBtn) {
+                    const seat = event.target.closest('.seat');
+                    const seatIndex = parseInt(seat?.getAttribute('data-key'), 10);
+                    const botId = removeBtn.getAttribute('data-bot-id');
+                    if (!Number.isNaN(seatIndex)) {
+                        PyPoker.Bot.removeBot(botId, seatIndex);
+                    }
+                    return;
+                }
+
+                const seat = event.target.closest('.seat');
+                if (!seat) return;
+
+                const seatIndex = parseInt(seat.getAttribute('data-key'), 10);
+                if (Number.isNaN(seatIndex)) return;
+
+                if (PyPoker.botAddMode) {
+                    if (!seat.classList.contains('empty')) {
+                        PyPoker.Logger.log('该座位已被占用');
+                        return;
+                    }
+                    PyPoker.Bot.addBotToSeat(seatIndex);
+                    return;
+                }
+
+                if (!seat.classList.contains('empty')) return;
+
+                PyPoker.pendingSeatRequest = seatIndex;
+                PyPoker.Player.resetReadyStatus();
+                PyPoker.Logger.log('已选择座位，等待入座...');
+            });
+        }
+
+        const addBotBtn = document.getElementById('add-bot-btn');
+        if (addBotBtn) {
+            addBotBtn.addEventListener('click', function() {
+                PyPoker.Bot.toggleAddMode();
+            });
+        }
 
         // Ready 按钮
         document.getElementById('ready-btn').addEventListener('click', function() {

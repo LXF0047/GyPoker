@@ -6,7 +6,7 @@
 # @desc : Expose all database utility functions
 
 from .base import get_db_connection
-from .player_utils import get_player_by_login_username, get_player_by_id, create_player, update_player_profile
+from .player_utils import get_player_by_login_username, get_player_by_id, create_player, update_player_profile, get_players_by_nickname_prefix
 from .chips_operation import update_player_wallet, auto_topup_chips, check_and_reset_daily_chips
 from .data_analysis import update_daily_stats, get_daily_ranking_list, get_player_analysis_data, update_lifetime_stats
 from .system_utils import get_api_key, daily_settlement_task, start_daily_settlement_scheduler
@@ -25,6 +25,7 @@ __all__ = [
     'get_player_by_id',
     'create_player',
     'update_player_profile',
+    'get_players_by_nickname_prefix',
     'update_player_wallet',
     'auto_topup_chips',
     'check_and_reset_daily_chips',

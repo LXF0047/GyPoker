@@ -141,6 +141,24 @@
             user-select: none;
             -webkit-touch-callout: none;
         }
+
+        /* 空座位可点击提示 */
+        .seat.empty {
+            cursor: pointer;
+        }
+
+        .seat.empty::after {
+            content: '点击入座';
+            margin-top: 0.4cqmin;
+            font-size: 1.4cqmin;
+            color: rgba(212, 175, 55, 0.65);
+            text-shadow: 0 0 0.6cqmin rgba(0, 0, 0, 0.6);
+            pointer-events: none;
+        }
+
+        .seat.empty:hover::after {
+            color: rgba(212, 175, 55, 0.95);
+        }
     </style>
 </head>
 <body>
@@ -198,6 +216,16 @@
                 <div class="game-info-item">
                     <span class="game-info-label">房主:</span>
                     <span id="room-owner-name" class="game-info-value">-</span>
+                    <div id="bot-controls" class="owner-only" style="display: none; margin-left: 8px; gap: 6px; align-items: center;">
+                        <select id="bot-difficulty" class="bg-neutral-900/80 border border-yellow-700/40 text-yellow-100 text-[12px] rounded px-2 py-1">
+                            <option value="easy">简单</option>
+                            <option value="medium">中等</option>
+                            <option value="hard">困难</option>
+                        </select>
+                        <button id="add-bot-btn" class="owner-only" style="background: rgba(212, 175, 55, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); border-radius: 4px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: background 0.3s;" onmouseover="this.style.background='rgba(212, 175, 55, 0.4)'" onmouseout="this.style.background='rgba(212, 175, 55, 0.2)'">
+                            添加机器人
+                        </button>
+                    </div>
                 </div>
                 <div class="game-info-item">
                     <button id="last-10-hands-btn" class="owner-only" style="display: none; background: rgba(212, 175, 55, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); border-radius: 4px; padding: 2px 8px; font-size: 12px; cursor: pointer; transition: background 0.3s;" onmouseover="this.style.background='rgba(212, 175, 55, 0.4)'" onmouseout="this.style.background='rgba(212, 175, 55, 0.2)'">
