@@ -1019,10 +1019,154 @@ const PyPoker = {
             }, 3000);
         },
 
-        // 播放音效
+        // === Audio (voice/sfx) helpers ===
+        // iOS/Safari will block audio playback until a user gesture occurs.
+        // When the sidebar is collapsed (especially on mobile by default), users might not interact with the chat,
+        // so we proactively unlock audio on *any* user interaction and keep audio element references alive.
+        setupAudioUnlock: function() {
+            if (PyPoker.Game._audioUnlockSetup) return;
+            PyPoker.Game._audioUnlockSetup = true;
+
+            const unlock = () => PyPoker.Game.unlockAudio();
+
+            // Use capture so we get the earliest user gesture possible.
+            window.addEventListener('pointerdown', unlock, { passive: true, capture: true });
+            window.addEventListener('touchstart', unlock, { passive: true, capture: true });
+            window.addEventListener('mousedown', unlock, { passive: true, capture: true });
+            window.addEventListener('keydown', unlock, { capture: true });
+
+            // Some browsers suspend audio contexts when backgrounded.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState !== 'visible') return;
+                const ctx = PyPoker.Game._audioContext;
+                if (ctx && ctx.state === 'suspended') {
+                    ctx.resume().catch(() => {});
+                }
+            });
+        },
+
+        unlockAudio: function() {
+            if (PyPoker.Game._audioUnlocked || PyPoker.Game._audioUnlocking) return;
+            PyPoker.Game._audioUnlocking = true;
+
+            const tasks = [];
+
+            // 1) WebAudio unlock (works well on iOS)
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    if (!PyPoker.Game._audioContext) {
+                        PyPoker.Game._audioContext = new AudioContext();
+                    }
+                    const ctx = PyPoker.Game._audioContext;
+                    if (ctx && ctx.state === 'suspended') {
+                        const p = ctx.resume();
+                        if (p && typeof p.then === 'function') tasks.push(p);
+                    }
+
+                    // Play a tiny silent buffer to fully unlock audio on some iOS versions.
+                    if (ctx) {
+                        const buffer = ctx.createBuffer(1, 1, 22050);
+                        const source = ctx.createBufferSource();
+                        source.buffer = buffer;
+                        source.connect(ctx.destination);
+                        source.start(0);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+
+            // 2) HTMLAudioElement unlock (covers cases where WebAudio unlock isn't enough)
+            try {
+                if (!PyPoker.Game._audioPrimer) {
+                    const primer = new Audio();
+                    primer.preload = 'auto';
+                    primer.playsInline = true;
+                    // Tiny silent wav (1 sample)
+                    primer.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
+                    PyPoker.Game._audioPrimer = primer;
+                }
+
+                const primer = PyPoker.Game._audioPrimer;
+                primer.muted = true;
+                const p = primer.play();
+                if (p && typeof p.then === 'function') {
+                    tasks.push(
+                        p.then(() => {
+                            primer.pause();
+                            primer.currentTime = 0;
+                            primer.muted = false;
+                        })
+                    );
+                } else {
+                    // Some browsers don't return a Promise from play()
+                    primer.pause();
+                    primer.currentTime = 0;
+                    primer.muted = false;
+                    tasks.push(Promise.resolve());
+                }
+            } catch (e) {
+                // ignore
+            }
+
+            if (tasks.length === 0) {
+                PyPoker.Game._audioUnlocking = false;
+                return;
+            }
+
+            // Avoid Promise.allSettled for broader Safari compatibility.
+            Promise.all(
+                tasks.map((t) => Promise.resolve(t).then(() => true).catch(() => false))
+            ).then((results) => {
+                if (results.some(Boolean)) PyPoker.Game._audioUnlocked = true;
+            }).catch(() => {
+                // ignore
+            }).then(() => {
+                PyPoker.Game._audioUnlocking = false;
+            });
+        },
+
+        // 播放音效 / 语音（互动按钮）
         playSound: function(action) {
-            const audio = new Audio(`/static/sounds/${action}.mp3`);
-            audio.play().catch(e => console.log('Audio play failed:', e));
+            if (!action) return;
+
+            // Best-effort unlock (no-op if already unlocked).
+            PyPoker.Game.unlockAudio();
+
+            const url = `/static/sounds/${action}.mp3`;
+            const audio = new Audio(url);
+            audio.preload = 'auto';
+            audio.playsInline = true;
+
+            if (!PyPoker.Game._activeAudios) PyPoker.Game._activeAudios = [];
+            PyPoker.Game._activeAudios.push(audio);
+
+            const cleanup = () => {
+                const list = PyPoker.Game._activeAudios;
+                if (!list) return;
+                const idx = list.indexOf(audio);
+                if (idx !== -1) list.splice(idx, 1);
+            };
+
+            audio.addEventListener('ended', cleanup, { once: true });
+            audio.addEventListener('error', cleanup, { once: true });
+
+            const p = audio.play();
+            if (p && typeof p.catch === 'function') {
+                p.catch((e) => {
+                    // If playback is blocked, keep trying to unlock on the next user gesture.
+                    if (e && e.name === 'NotAllowedError') {
+                        PyPoker.Game._audioUnlocked = false;
+                        if (!PyPoker.Game._audioBlockHintShown) {
+                            PyPoker.Game._audioBlockHintShown = true;
+                            PyPoker.Logger.log('提示：点击屏幕一次以启用语音/音效');
+                        }
+                    }
+                    console.log('Audio play failed:', e);
+                    cleanup();
+                });
+            }
         }
     },
 
@@ -1235,6 +1379,9 @@ const PyPoker = {
 
     // 初始化
     init: function() {
+        // Setup audio unlocking to ensure voice/sound can play even when sidebar is collapsed.
+        PyPoker.Game.setupAudioUnlock();
+
         PyPoker.socket = io();
 
         PyPoker.socket.on('connect', function() {
@@ -1479,6 +1626,10 @@ const PyPoker = {
 
 // 发送互动消息
 function sendInteraction(action) {
+    // iOS/Safari may block audio until the user interacts with the page.
+    // Try to unlock here since this is a direct user gesture.
+    try { PyPoker.Game.unlockAudio(); } catch (e) {}
+
     const now = Date.now();
     const lastTime = PyPoker.interactionCooldowns[action] || 0;
     const cooldown = 5000; // 5秒冷却
@@ -1522,11 +1673,17 @@ function sendInteraction(action) {
 
 // UI 辅助函数
 function toggleSidebar() {
+    // Treat sidebar toggle as a user gesture to unlock audio.
+    try { PyPoker.Game.unlockAudio(); } catch (e) {}
+
     document.getElementById('sidebar').classList.toggle('open');
     document.getElementById('sidebar-overlay').classList.toggle('active');
 }
 
 function toggleSidebarDesktop() {
+    // Treat sidebar toggle as a user gesture to unlock audio.
+    try { PyPoker.Game.unlockAudio(); } catch (e) {}
+
     const sidebar = document.getElementById('sidebar');
     const showBtn = document.getElementById('desktop-show-sidebar');
     
