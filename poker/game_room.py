@@ -242,14 +242,58 @@ class GameRoom(GameSubscriber):
         self._logger = logger
         self._lock = threading.Lock()
 
+    def _select_owner(self) -> Optional[str]:
+        """
+        Select owner from current room players.
+        Rule: bots can never become owner.
+        """
+        for player in self._room_players.players:
+            if not getattr(player, "is_bot", False):
+                return player.id
+        return None
+
+    def _refresh_owner(self):
+        self.owner = self._select_owner()
+
+    def _has_human_players(self) -> bool:
+        return any(not getattr(player, "is_bot", False) for player in self._room_players.players)
+
+    def _close_room_if_only_bots(self):
+        """
+        If room has no human players, remove all remaining bot players and reset owner.
+        This is treated as room closed.
+        """
+        players = self._room_players.players
+        if not players:
+            self.owner = None
+            return
+
+        if self._has_human_players():
+            return
+
+        bot_ids = [player.id for player in players if getattr(player, "is_bot", False)]
+        for bot_id in bot_ids:
+            try:
+                bot = self._room_players.get_player(bot_id)
+                bot.disconnect()
+                self._room_players.remove_player(bot_id)
+            except UnknownRoomPlayerException:
+                pass
+
+        self.owner = None
+        self.hand_in_progress = False
+        self.is_final_countdown = False
+        self.final_hands_countdown = 0
+        self.current_hand_count = 0
+        self._event_messages = []
+        self._logger.info("Room %s closed: no human players remain", self.id)
 
     def join(self, player: PlayerServer):
         self._lock.acquire()
         try:
             try:
                 self._room_players.add_player(player)
-                if self.owner is None:
-                    self.owner = player.id
+                self._refresh_owner()
                 self._room_event_handler.room_event("player-added", player.id, self.owner)
             except DuplicateRoomPlayerException:
                 old_player = self._room_players.get_player(player.id)
@@ -265,6 +309,7 @@ class GameRoom(GameSubscriber):
                 player = old_player
                 # 记录重连信息
                 self._logger.info(f"Player {player.id} reconnected. Current money: {player.money}")
+                self._refresh_owner()
                 self._room_event_handler.room_event("player-rejoined", player.id, self.owner)
 
             for event_message in self._event_messages:
@@ -355,15 +400,10 @@ class GameRoom(GameSubscriber):
             self._logger.error(f"Failed to save player {player_id} data on leave: {e}")
         player.disconnect()
         self._room_players.remove_player(player.id)
+        self._refresh_owner()
 
-        if player_id == self.owner:
-            join_order = self._room_players._player_join_order
-            if join_order:
-                self.owner = join_order[0]
-            else:
-                self.owner = None
-        
         self._room_event_handler.room_event("player-removed", player.id, self.owner)
+        self._close_room_if_only_bots()
 
     def game_event(self, event: str, event_data: dict):
         """
@@ -479,7 +519,15 @@ class GameRoom(GameSubscriber):
             last_readiness = {}
             while True:
                 try:
+                    self._close_room_if_only_bots()
+                    if not self._has_human_players():
+                        break
+
                     self.remove_inactive_players()
+                    self._close_room_if_only_bots()
+                    if not self._has_human_players():
+                        break
+
                     self._apply_pending_seat_requests()
 
                     # Check for readiness changes
