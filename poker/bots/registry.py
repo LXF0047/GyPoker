@@ -8,52 +8,6 @@ from .remote_engine import RemoteDecisionEngine
 from .decision import BotDecisionContext, BotDecisionEngine
 
 
-class AlwaysCallEngine(BotDecisionEngine):
-    """
-    跟注过牌决策，用于调试机器人流程是否好用。
-    如果有人下注，它就跟注；如果没有人下注，它就过牌。
-    """
-
-    def decide(self, context: BotDecisionContext) -> int:
-        if context.min_bet == 0:
-            return 0
-        return context.min_bet
-
-
-class TightRandomEngine(BotDecisionEngine):
-    """
-    测试用，基于规则的紧型机器人
-    大部分时间弃牌，偶尔跟注或小额加注。
-    """
-
-    def decide(self, context: BotDecisionContext) -> int:
-        if context.min_bet == 0:
-            # 70% 概率过牌，否则下注（不超过最大下注额，最小下注额+10）
-            return 0 if random.random() < 0.7 else min(context.max_bet, context.min_bet + 10)
-        # 60% 概率弃牌，否则跟注
-        return -1 if random.random() < 0.6 else context.min_bet
-
-
-class AggressiveRandomEngine(BotDecisionEngine):
-    """
-    测试用，基于规则的激进机器人
-    经常下注和加注，较少弃牌。
-    """
-
-    def decide(self, context: BotDecisionContext) -> int:
-        if context.min_bet == 0:
-            if random.random() < 0.5:
-                return 0
-            # 下注：底池的 66% 或最小下注额，取较大者，但不超过最大下注额
-            return min(context.max_bet, max(context.min_bet, int(context.pot_total * 0.66)))
-        if random.random() < 0.3:
-            return -1  # 30% 概率弃牌
-        if random.random() < 0.5:
-            return context.min_bet  # 35% 概率跟注 (0.7 * 0.5)
-        # 35% 概率加注
-        return min(context.max_bet, max(context.min_bet + 10, int(context.pot_total * 0.75)))
-
-
 class TableDrivenEasyEngine(BotDecisionEngine):
     """
     基于查表的简单机器人引擎。
@@ -192,7 +146,7 @@ class TableDrivenEasyEngine(BotDecisionEngine):
 
 
 BOT_ENGINE_REGISTRY: Dict[str, BotDecisionEngine] = {
-    "easy": RemoteDecisionEngine("easy"),
+    "easy": TableDrivenEasyEngine(),
     "medium": RemoteDecisionEngine("medium"),
     "hard": RemoteDecisionEngine("hard"),
 }

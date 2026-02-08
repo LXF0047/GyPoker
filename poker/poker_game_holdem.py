@@ -1,6 +1,6 @@
 import uuid
 import json
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import gevent
 
@@ -16,6 +16,7 @@ from .config import INIT_MONEY, TIMEOUT_TOLERANCE, BET_TIMEOUT, WAIT_AFTER_FLOP_
 import logging
 
 from .bots.decision import BotDecisionContext
+
 
 class HoldemPokerGameFactory(GameFactory):
     def __init__(self, big_blind: float, small_blind: float, logger,
@@ -93,6 +94,17 @@ class HoldemPokerGameEventDispatcher(GameEventDispatcher):
                 "ranking_list": ranking_list
             }
         )
+
+
+class HoldemGameBetHandler(GameBetHandler):
+    def __init__(self, game, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._game = game
+
+    def get_bet(self, player, min_bet, max_bet, bets):
+        if getattr(player, "is_bot", False):
+            return self._game.get_bot_bet(player, min_bet, max_bet, bets)
+        return super().get_bet(player, min_bet, max_bet, bets)
 
 
 class HoldemPokerGame(PokerGame):
@@ -217,7 +229,8 @@ class HoldemPokerGame(PokerGame):
         """
         Explicitly create bet handler with action callback to ensure recording
         """
-        return GameBetHandler(
+        return HoldemGameBetHandler(
+            self,
             game_players=self._game_players,
             bet_rounder=GameBetRounder(self._game_players),
             event_dispatcher=self._event_dispatcher,
@@ -272,32 +285,30 @@ class HoldemPokerGame(PokerGame):
             action_history=list(self._action_history)
         )
 
-    def get_bet(self, player, min_bet: float, max_bet: float, bets):
-        if getattr(player, "is_bot", False):
-            engine = getattr(player, "bot_engine", None)
-            if not engine:
-                return -1
-            context = self._build_bot_context(player, min_bet, max_bet, bets)
-            try:
-                decision = engine.decide(context)
-            except Exception as e:
-                self._logger.error("Bot decision failed: %s", e)
-                return -1
+    def get_bot_bet(self, player, min_bet: float, max_bet: float, bets):
+        # 机器人下注
+        engine = getattr(player, "bot_engine", None)
+        if not engine:
+            return -1
+        context = self._build_bot_context(player, min_bet, max_bet, bets)
+        try:
+            decision = engine.decide(context)
+        except Exception as e:
+            self._logger.error("Bot decision failed: %s", e)
+            return -1
 
-            try:
-                decision = int(round(float(decision)))
-            except Exception:
-                return -1
+        try:
+            decision = int(round(float(decision)))
+        except Exception:
+            return -1
 
-            if decision == -1:
-                return -1
-            if decision < min_bet:
-                return 0 if min_bet == 0 else int(min_bet)
-            if decision > max_bet:
-                return int(max_bet)
-            return int(decision)
-
-        return super().get_bet(player, min_bet, max_bet, bets)
+        if decision == -1:
+            return -1
+        if decision < min_bet:
+            return 0 if min_bet == 0 else int(min_bet)
+        if decision > max_bet:
+            return int(max_bet)
+        return int(decision)
 
     def _on_player_action(self, player, bet, min_bet, max_bet, bets, forced_action_type: str = None):
         """记录玩家行动到数据库。
@@ -375,13 +386,13 @@ class HoldemPokerGame(PokerGame):
             return
 
         if not add_hand_action(
-            self._db_hand_id,
-            player.id,
-            self._street,
-            self._action_num,
-            action_type,
-            amount,
-            pot_before_i
+                self._db_hand_id,
+                player.id,
+                self._street,
+                self._action_num,
+                action_type,
+                amount,
+                pot_before_i
         ):
             self._logger.error(f"Failed to record action for player {player.id}")
 
@@ -569,7 +580,7 @@ class HoldemPokerGame(PokerGame):
         self._scores = scores
         self._dealer_id = dealer_id
         self._init_db_record(dealer_id)
-        
+
         # Capture starting stacks for net calculation
         starting_stacks = {p.id: p.money for p in self._game_players.all}
 
@@ -642,11 +653,11 @@ class HoldemPokerGame(PokerGame):
                 for player in self._game_players.all:
                     is_winner = player.id in winner_ids
                     update_hand_player_result(self._db_hand_id, player.id, player.money, is_winner)
-                    
+
                     # Update Stats
                     start_stack = starting_stacks.get(player.id, player.money)
                     net_chips = int(player.money - start_stack)
-                    
+
                     # Only update stats for players who actually played (active or all-in at some point)
                     # For now update for everyone in the hand record
                     update_daily_stats(player.id, 1, net_chips)
@@ -655,10 +666,10 @@ class HoldemPokerGame(PokerGame):
                     ps = self._hand_stats.get(player.id, {})
                     # Won at Showdown: 赢了且去了摊牌
                     wsd = 1 if (is_winner and ps.get('wtsd')) else 0
-                    
+
                     # 计算 BB 增益
                     net_bb = net_chips / self._big_blind if self._big_blind > 0 else 0
-                    
+
                     update_lifetime_stats(
                         player.id,
                         hands_played=1,
