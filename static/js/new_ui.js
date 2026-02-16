@@ -1546,6 +1546,11 @@ const PyPoker = {
                     return;
                 }
 
+                if (PyPoker.isHandInProgress) {
+                    PyPoker.Logger.log('游戏进行中，暂不可选择座位，请在准备阶段选择');
+                    return;
+                }
+
                 if (!seat.classList.contains('empty')) return;
 
                 PyPoker.pendingSeatRequest = seatIndex;
