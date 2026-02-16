@@ -298,11 +298,17 @@ class GameRoom(GameSubscriber):
             except DuplicateRoomPlayerException:
                 old_player = self._room_players.get_player(player.id)
 
-                # 强制从数据库同步数据，解决登录时显示金额不一致的问题
-                # 即使房间活跃或有手牌进行中，也优先使用数据库中的数据（通常是用户登录时读取的）
-                old_player._money = player.money
-                old_player._avatar = player.avatar
-                self._logger.info(f"Synced player {player.id} from DB: money={player.money}, avatar={player.avatar}")
+                # 重连期间不覆盖内存筹码：
+                # 牌局内内存金额是实时值（包含下注/分池），DB 可能是上一手快照。
+                if self.hand_in_progress:
+                    self._logger.info(
+                        "Player %s reconnected during hand; keep in-memory chips=%s",
+                        player.id,
+                        old_player.money
+                    )
+                elif player.avatar is not None:
+                    # 非牌局阶段仅同步展示字段，筹码仍以内存为准。
+                    old_player._avatar = player.avatar
 
                 # 更新连接通道
                 old_player.update_channel(player)
