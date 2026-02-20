@@ -1328,12 +1328,12 @@ button,
 }
 
 .bgm-mute-btn {
-    position: absolute;
-    top: 2cqmin;
-    right: 2cqmin;
-    width: max(36px, 3.2cqmin);
-    height: max(36px, 3.2cqmin);
-    border: 0.15cqmin solid rgba(255, 255, 255, 0.18);
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.58);
     -webkit-backdrop-filter: blur(8px);
@@ -1342,8 +1342,18 @@ button,
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    z-index: 55;
+    z-index: 280;
     transition: all 0.2s ease;
+}
+
+@supports (width: 1cqmin) {
+    .bgm-mute-btn {
+        top: 2cqmin;
+        right: 2cqmin;
+        width: max(36px, 3.2cqmin);
+        height: max(36px, 3.2cqmin);
+        border: 0.15cqmin solid rgba(255, 255, 255, 0.18);
+    }
 }
 
 .bgm-mute-btn:hover {
@@ -1420,6 +1430,7 @@ button,
     }
 
     .bgm-mute-btn {
+        top: 62px;
         top: max(62px, calc(env(safe-area-inset-top) + 58px));
         right: 15px;
     }
