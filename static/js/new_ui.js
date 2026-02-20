@@ -392,9 +392,206 @@ const PyPoker = {
     Game: {
         gameId: null,
         dealerId: null,
+        communityCardCount: 0,
+        currentHandStartMoney: null,
+        currentHandLatestMoney: null,
+        _bgmMuted: false,
+        bgmTracks: {
+            room: '/static/sounds/bgm/bgm_room.mp3',
+            preflop: '/static/sounds/bgm/bgm_preflop.mp3',
+            flop: '/static/sounds/bgm/bgm_flop.mp3',
+            turn: '/static/sounds/bgm/bgm_turn.mp3',
+            river: '/static/sounds/bgm/bgm_river.mp3',
+            win: '/static/sounds/bgm/bgm_win.mp3',
+            lose: '/static/sounds/bgm/bgm_lose.mp3'
+        },
 
         getCurrentPlayerId: function() {
             return document.getElementById('current-player').getAttribute('data-player-id');
+        },
+
+        parseMoney: function(value) {
+            if (value === null || value === undefined) return null;
+            const normalized = String(value).replace(/[^0-9-]/g, '');
+            if (!normalized) return null;
+            const parsed = parseInt(normalized, 10);
+            return Number.isNaN(parsed) ? null : parsed;
+        },
+
+        getSeatMoney: function(playerId) {
+            if (!playerId) return null;
+            const seat = document.querySelector(`.seat[data-player-id="${playerId}"]`);
+            const text = seat?.querySelector('.player-balance')?.textContent;
+            return PyPoker.Game.parseMoney(text);
+        },
+
+        getCurrentPlayerMoney: function() {
+            if (typeof PyPoker.Game.currentHandLatestMoney === 'number') {
+                return PyPoker.Game.currentHandLatestMoney;
+            }
+            const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
+            const seatMoney = PyPoker.Game.getSeatMoney(currentPlayerId);
+            if (typeof seatMoney === 'number') return seatMoney;
+            const player = PyPoker.players?.[currentPlayerId];
+            return PyPoker.Game.parseMoney(player?.money);
+        },
+
+        trackCurrentPlayerMoney: function(player) {
+            if (!player) return;
+            const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
+            if (!currentPlayerId || String(player.id) !== String(currentPlayerId)) return;
+            const money = PyPoker.Game.parseMoney(player.money);
+            if (typeof money === 'number') {
+                PyPoker.Game.currentHandLatestMoney = money;
+            }
+        },
+
+        setCurrentHandStartMoney: function(players) {
+            const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
+            if (!currentPlayerId) {
+                PyPoker.Game.currentHandStartMoney = null;
+                PyPoker.Game.currentHandLatestMoney = null;
+                return;
+            }
+
+            let startMoney = null;
+            if (Array.isArray(players)) {
+                const currentPlayer = players.find((p) => String(p.id) === String(currentPlayerId));
+                startMoney = PyPoker.Game.parseMoney(currentPlayer?.money);
+            }
+            if (typeof startMoney !== 'number') {
+                startMoney = PyPoker.Game.getSeatMoney(currentPlayerId);
+            }
+
+            PyPoker.Game.currentHandStartMoney = typeof startMoney === 'number' ? startMoney : null;
+            PyPoker.Game.currentHandLatestMoney = PyPoker.Game.currentHandStartMoney;
+        },
+
+        playBgm: function(trackKey, loop) {
+            const src = PyPoker.Game.bgmTracks[trackKey];
+            if (!src) return;
+
+            const current = PyPoker.Game._bgmAudio;
+            if (current && PyPoker.Game._bgmTrackKey === trackKey) {
+                current.loop = !!loop;
+                if (current.paused) {
+                    const resumePromise = current.play();
+                    if (resumePromise && typeof resumePromise.catch === 'function') {
+                        resumePromise.catch(() => {});
+                    }
+                }
+                return;
+            }
+
+            PyPoker.Game.stopBgm();
+            PyPoker.Game.unlockAudio();
+
+            const audio = new Audio(src);
+            audio.preload = 'auto';
+            audio.playsInline = true;
+            audio.loop = !!loop;
+            audio.muted = !!PyPoker.Game._bgmMuted;
+            PyPoker.Game._bgmAudio = audio;
+            PyPoker.Game._bgmTrackKey = trackKey;
+
+            audio.addEventListener('ended', () => {
+                if (!audio.loop && PyPoker.Game._bgmAudio === audio) {
+                    PyPoker.Game._bgmAudio = null;
+                    PyPoker.Game._bgmTrackKey = null;
+                }
+            });
+
+            audio.addEventListener('error', () => {
+                if (PyPoker.Game._bgmAudio === audio) {
+                    PyPoker.Game._bgmAudio = null;
+                    PyPoker.Game._bgmTrackKey = null;
+                }
+            });
+
+            const playPromise = audio.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch((e) => {
+                    if (e && e.name === 'NotAllowedError') {
+                        PyPoker.Game._audioUnlocked = false;
+                    }
+                    console.log('BGM play failed:', e);
+                });
+            }
+        },
+
+        updateBgmMuteButton: function() {
+            const btn = document.getElementById('bgm-mute-btn');
+            if (!btn) return;
+            btn.classList.toggle('muted', !!PyPoker.Game._bgmMuted);
+            const label = PyPoker.Game._bgmMuted ? '恢复背景音乐' : '静音背景音乐';
+            btn.setAttribute('aria-label', label);
+            btn.setAttribute('title', label);
+        },
+
+        setBgmMuted: function(muted) {
+            PyPoker.Game._bgmMuted = !!muted;
+            const audio = PyPoker.Game._bgmAudio;
+            if (audio) {
+                audio.muted = PyPoker.Game._bgmMuted;
+                if (!PyPoker.Game._bgmMuted && audio.paused) {
+                    const p = audio.play();
+                    if (p && typeof p.catch === 'function') {
+                        p.catch((e) => console.log('BGM resume failed:', e));
+                    }
+                }
+            }
+            PyPoker.Game.updateBgmMuteButton();
+        },
+
+        toggleBgmMute: function() {
+            PyPoker.Game.setBgmMuted(!PyPoker.Game._bgmMuted);
+            PyPoker.Logger.log(PyPoker.Game._bgmMuted ? '背景音乐已静音' : '背景音乐已恢复');
+        },
+
+        playBgmLoop: function(trackKey) {
+            PyPoker.Game.playBgm(trackKey, true);
+        },
+
+        playBgmOnce: function(trackKey) {
+            PyPoker.Game.playBgm(trackKey, false);
+        },
+
+        stopBgm: function() {
+            const audio = PyPoker.Game._bgmAudio;
+            if (audio) {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.muted = false;
+            }
+            PyPoker.Game._bgmAudio = null;
+            PyPoker.Game._bgmTrackKey = null;
+        },
+
+        onSharedCards: function(cards) {
+            PyPoker.Game.addSharedCards(cards);
+            const cardCount = Array.isArray(cards) ? cards.length : 0;
+            PyPoker.Game.communityCardCount += cardCount;
+
+            if (PyPoker.Game.communityCardCount >= 5) {
+                PyPoker.Game.playBgmLoop('river');
+            } else if (PyPoker.Game.communityCardCount >= 4) {
+                PyPoker.Game.playBgmLoop('turn');
+            } else if (PyPoker.Game.communityCardCount >= 3) {
+                PyPoker.Game.playBgmLoop('flop');
+            }
+        },
+
+        handleGameOverBgm: function() {
+            if (typeof PyPoker.Game.currentHandStartMoney !== 'number') return;
+            const endMoney = PyPoker.Game.getCurrentPlayerMoney();
+            if (typeof endMoney !== 'number') return;
+
+            const net = endMoney - PyPoker.Game.currentHandStartMoney;
+            if (net > 0) {
+                PyPoker.Game.playBgmOnce('win');
+            } else if (net < 0) {
+                PyPoker.Game.playBgmOnce('lose');
+            }
         },
 
         // 花色名称映射（用于图像路径）
@@ -449,6 +646,9 @@ const PyPoker = {
         newGame: function(message) {
             PyPoker.Game.gameId = message.game_id;
             PyPoker.Game.dealerId = message.dealer_id;
+            PyPoker.Game.communityCardCount = 0;
+            PyPoker.Game.setCurrentHandStartMoney(message.players);
+            PyPoker.Game.playBgmLoop('preflop');
 
             // 隐藏玩家控制区
             document.getElementById('player-controls').style.display = 'none';
@@ -527,6 +727,7 @@ const PyPoker = {
                     }
                 }
             }
+            PyPoker.Game.trackCurrentPlayerMoney(player);
         },
 
         updatePlayers: function(players) {
@@ -832,6 +1033,7 @@ const PyPoker = {
             PyPoker.Player.disableBetMode();
             PyPoker.Game.fetchRankingData();
             PyPoker.Game.stopCountdown(); // 确保倒计时停止
+            PyPoker.Game.handleGameOverBgm();
             PyPoker.Logger.log('本局游戏结束');
         },
 
@@ -870,7 +1072,7 @@ const PyPoker = {
                     PyPoker.Game.playerFold(message.player);
                     break;
                 case 'shared-cards':
-                    PyPoker.Game.addSharedCards(message.cards);
+                    PyPoker.Game.onSharedCards(message.cards);
                     break;
                 case 'winner-designation':
                     PyPoker.Game.setWinners(message.pot);
@@ -1134,7 +1336,7 @@ const PyPoker = {
             // Best-effort unlock (no-op if already unlocked).
             PyPoker.Game.unlockAudio();
 
-            const url = `/static/sounds/${action}.mp3`;
+            const url = `/static/sounds/quick_msg/${action}.mp3`;
             const audio = new Audio(url);
             audio.preload = 'auto';
             audio.playsInline = true;
@@ -1194,6 +1396,7 @@ const PyPoker = {
             PyPoker.players = message.players;
             PyPoker.playerIds = message.player_ids;
             PyPoker.ownerId = message.owner_id;
+            PyPoker.Game.playBgmLoop('room');
 
             const seatsContainer = document.getElementById('seats-container');
             seatsContainer.innerHTML = '';
@@ -1381,6 +1584,7 @@ const PyPoker = {
     init: function() {
         // Setup audio unlocking to ensure voice/sound can play even when sidebar is collapsed.
         PyPoker.Game.setupAudioUnlock();
+        PyPoker.Game.updateBgmMuteButton();
 
         PyPoker.socket = io();
 
@@ -1392,6 +1596,7 @@ const PyPoker = {
         PyPoker.socket.on('disconnect', function() {
             PyPoker.Logger.log('与服务器断开连接');
             PyPoker.roomId = null;
+            PyPoker.Game.stopBgm();
             document.getElementById('seats-container').innerHTML = '';
         });
 
@@ -1563,6 +1768,13 @@ const PyPoker = {
         if (addBotBtn) {
             addBotBtn.addEventListener('click', function() {
                 PyPoker.Bot.toggleAddMode();
+            });
+        }
+
+        const bgmMuteBtn = document.getElementById('bgm-mute-btn');
+        if (bgmMuteBtn) {
+            bgmMuteBtn.addEventListener('click', function() {
+                PyPoker.Game.toggleBgmMute();
             });
         }
 

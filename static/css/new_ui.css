@@ -1327,6 +1327,52 @@ button,
     font-weight: 500;
 }
 
+.bgm-mute-btn {
+    position: absolute;
+    top: 2cqmin;
+    right: 2cqmin;
+    width: max(36px, 3.2cqmin);
+    height: max(36px, 3.2cqmin);
+    border: 0.15cqmin solid rgba(255, 255, 255, 0.18);
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.58);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 55;
+    transition: all 0.2s ease;
+}
+
+.bgm-mute-btn:hover {
+    border-color: rgba(212, 175, 55, 0.8);
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.3);
+}
+
+.bgm-mute-btn img {
+    width: 60%;
+    height: 60%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.bgm-mute-btn.muted {
+    border-color: rgba(239, 68, 68, 0.8);
+    background: rgba(90, 18, 18, 0.7);
+}
+
+.bgm-mute-btn.muted::after {
+    content: '';
+    position: absolute;
+    width: 72%;
+    height: 2px;
+    background: #f87171;
+    transform: rotate(-45deg);
+    box-shadow: 0 0 6px rgba(248, 113, 113, 0.55);
+}
+
 /* 游戏日志区 */
 #game-status {
     position: absolute;
@@ -1371,6 +1417,11 @@ button,
 
     .mobile-toggle {
         display: block;
+    }
+
+    .bgm-mute-btn {
+        top: max(62px, calc(env(safe-area-inset-top) + 58px));
+        right: 15px;
     }
 
     .table-wrapper {
