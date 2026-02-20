@@ -2,6 +2,18 @@
 // PyPoker New UI - 完整游戏逻辑
 // ========================================
 
+const ACTION_VOICE_PACK_STORAGE_KEY = 'pypoker.actionVoicePack';
+const DEFAULT_ACTION_VOICE_PACK = 'base_male';
+const ACTION_VOICE_FILE_BY_EVENT = {
+    check: 'check',
+    call: 'call',
+    raise: 'raise',
+    bet: 'raise',
+    'all-in': 'allin',
+    allin: 'allin',
+    fold: 'fold'
+};
+
 const PyPoker = {
     socket: null,
     wantsToStartFinalHands: false,
@@ -1055,10 +1067,12 @@ const PyPoker = {
                     break;
                 case 'fold':
                     PyPoker.Game.playerFold(message.player);
+                    PyPoker.Game.playCurrentPlayerActionVoice(message.player, 'fold');
                     break;
                 case 'bet':
                     PyPoker.Game.updatePlayer(message.player);
                     PyPoker.Game.updatePlayersBet(message.bets);
+                    PyPoker.Game.playCurrentPlayerActionVoice(message.player, message.bet_type);
                     break;
                 case 'pots-update':
                     PyPoker.Game.updatePlayers(message.players);
@@ -1225,6 +1239,92 @@ const PyPoker = {
         // iOS/Safari will block audio playback until a user gesture occurs.
         // When the sidebar is collapsed (especially on mobile by default), users might not interact with the chat,
         // so we proactively unlock audio on *any* user interaction and keep audio element references alive.
+        getSelectedActionVoicePack: function() {
+            try {
+                const stored = localStorage.getItem(ACTION_VOICE_PACK_STORAGE_KEY);
+                return stored || DEFAULT_ACTION_VOICE_PACK;
+            } catch (e) {
+                return DEFAULT_ACTION_VOICE_PACK;
+            }
+        },
+
+        resolveActionVoiceFile: function(actionType) {
+            if (!actionType) return null;
+            const normalized = String(actionType).trim().toLowerCase();
+            return ACTION_VOICE_FILE_BY_EVENT[normalized] || null;
+        },
+
+        playCurrentPlayerActionVoice: function(player, actionType) {
+            if (!player || !player.id) return;
+            const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
+            if (!currentPlayerId) return;
+            if (String(player.id) !== String(currentPlayerId)) return;
+            PyPoker.Game.playActionVoice(actionType);
+        },
+
+        playActionVoice: function(actionType) {
+            const voiceFile = PyPoker.Game.resolveActionVoiceFile(actionType);
+            if (!voiceFile) return;
+
+            // Best-effort unlock (no-op if already unlocked).
+            PyPoker.Game.unlockAudio();
+
+            const selectedPack = PyPoker.Game.getSelectedActionVoicePack();
+            const fallbackPack = DEFAULT_ACTION_VOICE_PACK;
+            const packsToTry = selectedPack === fallbackPack ? [fallbackPack] : [selectedPack, fallbackPack];
+
+            const tryPlay = (index) => {
+                if (index >= packsToTry.length) return;
+
+                const packId = packsToTry[index];
+                const url = `/static/sounds/action/${encodeURIComponent(packId)}/${voiceFile}.wav`;
+                const audio = new Audio(url);
+                audio.preload = 'auto';
+                audio.playsInline = true;
+
+                if (!PyPoker.Game._activeAudios) PyPoker.Game._activeAudios = [];
+                PyPoker.Game._activeAudios.push(audio);
+
+                let settled = false;
+                const cleanup = () => {
+                    if (settled) return;
+                    settled = true;
+                    const list = PyPoker.Game._activeAudios;
+                    if (!list) return;
+                    const idx = list.indexOf(audio);
+                    if (idx !== -1) list.splice(idx, 1);
+                };
+
+                audio.addEventListener('ended', () => {
+                    cleanup();
+                }, { once: true });
+                audio.addEventListener('error', () => {
+                    cleanup();
+                    tryPlay(index + 1);
+                }, { once: true });
+
+                const p = audio.play();
+                if (p && typeof p.catch === 'function') {
+                    p.catch((e) => {
+                        // If playback is blocked, keep trying to unlock on next gesture, do not fallback-loop.
+                        if (e && e.name === 'NotAllowedError') {
+                            PyPoker.Game._audioUnlocked = false;
+                            if (!PyPoker.Game._audioBlockHintShown) {
+                                PyPoker.Game._audioBlockHintShown = true;
+                                PyPoker.Logger.log('提示：点击屏幕一次以启用语音/音效');
+                            }
+                        } else {
+                            cleanup();
+                            tryPlay(index + 1);
+                        }
+                        console.log('Action voice play failed:', e);
+                    });
+                }
+            };
+
+            tryPlay(0);
+        },
+
         setupAudioUnlock: function() {
             if (PyPoker.Game._audioUnlockSetup) return;
             PyPoker.Game._audioUnlockSetup = true;

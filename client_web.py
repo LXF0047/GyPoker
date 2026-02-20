@@ -53,6 +53,17 @@ FORTUNES = [
     "今日忌：冲动All-in。留得青山在，不怕没柴烧。"
 ]
 
+ACTION_SOUND_DIR = os.path.join("static", "sounds", "action")
+DEFAULT_ACTION_VOICE_PACK = "base_male"
+REQUIRED_ACTION_VOICE_FILES = {
+    "call.wav",
+    "check.wav",
+    "fold.wav",
+    "raise.wav",
+    "allin.wav",
+    "name.txt",
+}
+
 
 class User(UserMixin):
     def __init__(self, id, username, password, email, money, avatar=None):
@@ -213,6 +224,52 @@ def reset_password():
 def get_ranking():
     ranking_data = get_daily_ranking_list()
     return jsonify(ranking_data)
+
+
+def collect_action_voice_packs():
+    packs = []
+    action_root = os.path.join(app.root_path, ACTION_SOUND_DIR)
+
+    if not os.path.isdir(action_root):
+        return packs
+
+    for entry in sorted(os.scandir(action_root), key=lambda item: item.name):
+        if not entry.is_dir():
+            continue
+
+        folder = entry.path
+        if not all(os.path.isfile(os.path.join(folder, filename)) for filename in REQUIRED_ACTION_VOICE_FILES):
+            continue
+
+        name_file = os.path.join(folder, "name.txt")
+        try:
+            with open(name_file, "r", encoding="utf-8") as f:
+                display_name = f.read().strip()
+        except OSError:
+            continue
+
+        if not display_name:
+            continue
+
+        packs.append({
+            "id": entry.name,
+            "name": display_name
+        })
+
+    return packs
+
+
+@app.route('/api/action-voice-packs', methods=['GET'])
+@login_required
+def get_action_voice_packs():
+    packs = collect_action_voice_packs()
+    if not any(pack["id"] == DEFAULT_ACTION_VOICE_PACK for pack in packs):
+        app.logger.warning("Default action voice pack '%s' is missing or invalid", DEFAULT_ACTION_VOICE_PACK)
+
+    return jsonify({
+        "default": DEFAULT_ACTION_VOICE_PACK,
+        "packs": packs
+    })
 
 
 @app.route("/api/update-profile", methods=["POST"])

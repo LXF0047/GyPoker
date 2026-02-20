@@ -402,6 +402,18 @@
                         </div>
                     </div>
 
+                    <!-- Action Voice Pack -->
+                    <div>
+                        <label class="block text-amber-700 text-xs font-bold uppercase tracking-wider mb-1">动作语音包</label>
+                        <div class="relative">
+                            <select id="action-voice-pack" class="w-full bg-black/40 border border-slate-700 rounded px-4 py-2 text-amber-100 focus:outline-none focus:border-amber-500/50 transition-colors text-sm font-mono appearance-none">
+                                <option value="base_male">加载中...</option>
+                            </select>
+                            <i data-lucide="volume-2" class="absolute right-3 top-2.5 w-4 h-4 text-slate-700 pointer-events-none"></i>
+                        </div>
+                        <p class="text-[11px] text-amber-800 mt-1">仅显示完整语音包（含 call/check/fold/raise/allin/name）</p>
+                    </div>
+
                     <!-- Password -->
                     <div>
                         <label class="block text-amber-700 text-xs font-bold uppercase tracking-wider mb-1">修改密码(可选)</label>
@@ -426,6 +438,8 @@
         // 初始化 Lucide 图标
         lucide.createIcons();
 
+        const ACTION_VOICE_PACK_STORAGE_KEY = 'pypoker.actionVoicePack';
+        const FALLBACK_ACTION_VOICE_PACK = 'base_male';
         let activeCardIndex = null;
 
         // 生成背景漂浮元素
@@ -527,6 +541,7 @@
             if (modal.classList.contains('hidden')) {
                 // Open
                 modal.classList.remove('hidden');
+                loadActionVoicePacks();
                 // Small delay to allow display:block to apply before transition
                 setTimeout(() => {
                     backdrop.classList.remove('opacity-0');
@@ -584,6 +599,61 @@
             }
         }
 
+        function getStoredActionVoicePack() {
+            const stored = localStorage.getItem(ACTION_VOICE_PACK_STORAGE_KEY);
+            return stored || FALLBACK_ACTION_VOICE_PACK;
+        }
+
+        async function loadActionVoicePacks() {
+            const select = document.getElementById('action-voice-pack');
+            if (!select) return;
+
+            select.disabled = true;
+            select.innerHTML = '<option value="base_male">加载中...</option>';
+
+            let data = null;
+            try {
+                const response = await fetch('/api/action-voice-packs', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                data = await response.json();
+            } catch (e) {
+                console.error('Load action voice packs failed:', e);
+            }
+
+            const packs = Array.isArray(data?.packs) ? data.packs : [];
+            const serverDefault = (typeof data?.default === 'string' && data.default) ? data.default : FALLBACK_ACTION_VOICE_PACK;
+
+            select.innerHTML = '';
+            packs.forEach((pack) => {
+                if (!pack || !pack.id || !pack.name) return;
+                const option = document.createElement('option');
+                option.value = pack.id;
+                option.textContent = `${pack.name} (${pack.id})`;
+                select.appendChild(option);
+            });
+
+            // 如果服务端没有可用语音包，至少保留默认项，避免界面空白
+            if (select.options.length === 0) {
+                const fallbackOption = document.createElement('option');
+                fallbackOption.value = FALLBACK_ACTION_VOICE_PACK;
+                fallbackOption.textContent = `默认语音包 (${FALLBACK_ACTION_VOICE_PACK})`;
+                select.appendChild(fallbackOption);
+            }
+
+            const validIds = new Set(Array.from(select.options).map((option) => option.value));
+            let selectedPack = getStoredActionVoicePack();
+            if (!validIds.has(selectedPack)) {
+                selectedPack = validIds.has(serverDefault) ? serverDefault : select.options[0].value;
+            }
+
+            select.value = selectedPack;
+            localStorage.setItem(ACTION_VOICE_PACK_STORAGE_KEY, selectedPack);
+            select.disabled = false;
+        }
+
         // Pre-select avatar
         document.addEventListener('DOMContentLoaded', () => {
             const currentAvatar = "{{ avatar }}";
@@ -592,6 +662,15 @@
             if (currentAvatar && currentAvatar.startsWith('data:image')) {
                 preview.style.backgroundImage = `url(${currentAvatar})`;
                 preview.innerText = ''; // Clear text if image
+            }
+
+            const voicePackSelect = document.getElementById('action-voice-pack');
+            if (voicePackSelect) {
+                voicePackSelect.addEventListener('change', (event) => {
+                    if (event.target.value) {
+                        localStorage.setItem(ACTION_VOICE_PACK_STORAGE_KEY, event.target.value);
+                    }
+                });
             }
         });
 
