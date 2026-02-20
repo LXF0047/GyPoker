@@ -4,6 +4,7 @@ from typing import Optional, Tuple, List, Any
 import requests
 
 from .decision import BotDecisionContext, BotDecisionEngine
+from ..db_utils.system_utils import get_api_key
 
 
 class RemoteDecisionEngine(BotDecisionEngine):
@@ -30,8 +31,14 @@ class RemoteDecisionEngine(BotDecisionEngine):
 
     def __init__(self, difficulty: str):
         self._difficulty = difficulty
-        # Default to local service if env var not set
-        self._base_url = os.environ.get("BOT_DECISION_URL", "http://127.0.0.1:8000").rstrip("/")
+        
+        # Try to get URL from database first
+        db_url = get_api_key("solver")
+        if db_url:
+            db_url = db_url.rstrip("/")
+        
+        # Default to local service if env var not set and not in DB
+        self._base_url = db_url or os.environ.get("BOT_DECISION_URL", "http://127.0.0.1:8000").rstrip("/")
         self._token = os.environ.get("BOT_DECISION_TOKEN", "")
         timeout_s = os.environ.get("BOT_DECISION_TIMEOUT", "1.2")
         try:
