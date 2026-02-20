@@ -755,7 +755,9 @@ class GameBetHandler:
         def get_bet_type(bet):
             if bet == 0:
                 return "check"
-            elif bet == player.money:
+            # 注意：on_bet 在玩家 take_money 之后被调用，此时 player.money 已是下注后的余额。
+            # all-in 应基于本次动作可下注上限 max_bet 判断。
+            elif max_bet > 0 and bet == max_bet:
                 return "all-in"
             elif bet == min_bet:
                 return "call"

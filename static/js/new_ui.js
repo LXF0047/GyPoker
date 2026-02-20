@@ -11,6 +11,8 @@ const ACTION_VOICE_FILE_BY_EVENT = {
     bet: 'raise',
     'all-in': 'allin',
     allin: 'allin',
+    'all_in': 'allin',
+    'all in': 'allin',
     fold: 'fold'
 };
 
@@ -408,6 +410,7 @@ const PyPoker = {
         currentHandStartMoney: null,
         currentHandLatestMoney: null,
         _bgmMuted: false,
+        _bgmNextLoopTrack: null,
         bgmTracks: {
             room: '/static/sounds/bgm/bgm_room.mp3',
             preflop: '/static/sounds/bgm/bgm_preflop.mp3',
@@ -505,11 +508,17 @@ const PyPoker = {
             audio.muted = !!PyPoker.Game._bgmMuted;
             PyPoker.Game._bgmAudio = audio;
             PyPoker.Game._bgmTrackKey = trackKey;
+            PyPoker.Game._bgmNextLoopTrack = (!loop && (trackKey === 'win' || trackKey === 'lose')) ? 'room' : null;
 
             audio.addEventListener('ended', () => {
                 if (!audio.loop && PyPoker.Game._bgmAudio === audio) {
+                    const nextLoopTrack = PyPoker.Game._bgmNextLoopTrack;
                     PyPoker.Game._bgmAudio = null;
                     PyPoker.Game._bgmTrackKey = null;
+                    PyPoker.Game._bgmNextLoopTrack = null;
+                    if (nextLoopTrack) {
+                        PyPoker.Game.playBgmLoop(nextLoopTrack);
+                    }
                 }
             });
 
@@ -517,6 +526,7 @@ const PyPoker = {
                 if (PyPoker.Game._bgmAudio === audio) {
                     PyPoker.Game._bgmAudio = null;
                     PyPoker.Game._bgmTrackKey = null;
+                    PyPoker.Game._bgmNextLoopTrack = null;
                 }
             });
 
@@ -577,6 +587,7 @@ const PyPoker = {
             }
             PyPoker.Game._bgmAudio = null;
             PyPoker.Game._bgmTrackKey = null;
+            PyPoker.Game._bgmNextLoopTrack = null;
         },
 
         onSharedCards: function(cards) {
@@ -594,15 +605,23 @@ const PyPoker = {
         },
 
         handleGameOverBgm: function() {
-            if (typeof PyPoker.Game.currentHandStartMoney !== 'number') return;
+            if (typeof PyPoker.Game.currentHandStartMoney !== 'number') {
+                PyPoker.Game.playBgmLoop('room');
+                return;
+            }
             const endMoney = PyPoker.Game.getCurrentPlayerMoney();
-            if (typeof endMoney !== 'number') return;
+            if (typeof endMoney !== 'number') {
+                PyPoker.Game.playBgmLoop('room');
+                return;
+            }
 
             const net = endMoney - PyPoker.Game.currentHandStartMoney;
             if (net > 0) {
                 PyPoker.Game.playBgmOnce('win');
             } else if (net < 0) {
                 PyPoker.Game.playBgmOnce('lose');
+            } else {
+                PyPoker.Game.playBgmLoop('room');
             }
         },
 
@@ -1067,12 +1086,12 @@ const PyPoker = {
                     break;
                 case 'fold':
                     PyPoker.Game.playerFold(message.player);
-                    PyPoker.Game.playCurrentPlayerActionVoice(message.player, 'fold');
+                    PyPoker.Game.playPlayerActionVoice(message.player, 'fold');
                     break;
                 case 'bet':
                     PyPoker.Game.updatePlayer(message.player);
                     PyPoker.Game.updatePlayersBet(message.bets);
-                    PyPoker.Game.playCurrentPlayerActionVoice(message.player, message.bet_type);
+                    PyPoker.Game.playPlayerActionVoice(message.player, PyPoker.Game.resolveBetVoiceType(message));
                     break;
                 case 'pots-update':
                     PyPoker.Game.updatePlayers(message.players);
@@ -1254,11 +1273,31 @@ const PyPoker = {
             return ACTION_VOICE_FILE_BY_EVENT[normalized] || null;
         },
 
-        playCurrentPlayerActionVoice: function(player, actionType) {
+        resolveBetVoiceType: function(message) {
+            const typeFromServer = message?.bet_type;
+            const normalizedType = typeFromServer ? String(typeFromServer).trim().toLowerCase() : '';
+
+            // Blinds are forced bets, not voluntary raises; skip action voice for them.
+            if (normalizedType === 'blind' || normalizedType === 'big blind' || normalizedType === 'big_blind' || normalizedType === 'small blind' || normalizedType === 'small_blind') {
+                return null;
+            }
+
+            const mapped = PyPoker.Game.resolveActionVoiceFile(typeFromServer);
+            if (mapped === 'allin') return 'allin';
+            if (mapped) return typeFromServer;
+
+            // Fallback: if action consumed all chips, treat as all-in.
+            const betValue = Number(message?.bet);
+            const remainingMoney = Number(message?.player?.money);
+            if (Number.isFinite(betValue) && betValue > 0 && Number.isFinite(remainingMoney) && remainingMoney === 0) {
+                return 'allin';
+            }
+
+            return 'raise';
+        },
+
+        playPlayerActionVoice: function(player, actionType) {
             if (!player || !player.id) return;
-            const currentPlayerId = PyPoker.Game.getCurrentPlayerId();
-            if (!currentPlayerId) return;
-            if (String(player.id) !== String(currentPlayerId)) return;
             PyPoker.Game.playActionVoice(actionType);
         },
 

@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Optional, Tuple, List, Any
 
 import requests
@@ -47,6 +48,8 @@ class RemoteDecisionEngine(BotDecisionEngine):
             self._timeout = 1.2
 
     def decide(self, context: BotDecisionContext) -> int:
+        time.sleep(0.5)
+
         if not self._base_url:
             return self._fallback(context)
         
