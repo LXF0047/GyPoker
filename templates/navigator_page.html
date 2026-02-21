@@ -631,7 +631,7 @@
                 if (!pack || !pack.id || !pack.name) return;
                 const option = document.createElement('option');
                 option.value = pack.id;
-                option.textContent = `${pack.name} (${pack.id})`;
+                option.textContent = pack.name;
                 select.appendChild(option);
             });
 
@@ -639,7 +639,7 @@
             if (select.options.length === 0) {
                 const fallbackOption = document.createElement('option');
                 fallbackOption.value = FALLBACK_ACTION_VOICE_PACK;
-                fallbackOption.textContent = `默认语音包 (${FALLBACK_ACTION_VOICE_PACK})`;
+                fallbackOption.textContent = '默认语音包';
                 select.appendChild(fallbackOption);
             }
 
